@@ -55,6 +55,7 @@ After completing the Quick Start above:
 | `okf show <id>` | Display a concept |
 | `okf list` | Browse concepts (filterable) |
 | `okf update <id>` | Modify a concept |
+| `okf move <id> <new-id>` | Move or rename a concept |
 | `okf delete <id>` | Remove a concept |
 | `okf reindex` | Rebuild the vector index |
 | `okf stats` | Bundle statistics |
@@ -102,7 +103,7 @@ Create `~/.kiro/settings/mcp.json` on the server:
       "autoApprove": [
         "commit_concept", "delete_concept", "fetch_concepts",
         "get_stats", "init_bundle", "list_concepts",
-        "reindex", "show_concept", "update_concept"
+        "move_concept", "reindex", "show_concept", "update_concept"
       ]
     }
   }
@@ -144,6 +145,7 @@ See [MCP Setup Guide](docs/mcp-setup.md) for individual installation or [Team Se
 | `init_bundle` | Create a new bundle at a given path |
 | `commit_concept` | Add a new concept (title, type, content, tags) |
 | `update_concept` | Modify fields on an existing concept |
+| `move_concept` | Move or rename a concept |
 | `delete_concept` | Remove a concept |
 | `fetch_concepts` | Semantic/hybrid search with natural language |
 | `list_concepts` | Browse concepts with filters (type, tags, date, path) |

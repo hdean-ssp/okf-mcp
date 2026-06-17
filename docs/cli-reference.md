@@ -89,6 +89,26 @@ okf update retry-pattern --content "Updated description..."
 okf update retry-pattern --json '{"tags": ["new-tag"]}'
 ```
 
+## okf move \<concept-id\> \<new-concept-id\>
+
+Move or rename a concept.
+
+```bash
+# Rename within the same directory
+okf move notes/old-name notes/new-name
+
+# Move to a different directory
+okf move drafts/idea published/idea
+
+# Move and update the title
+okf move tmp/scratch guides/setup-guide --title "Setup Guide"
+```
+
+Options:
+- `--title` — update the frontmatter title at the same time
+
+The concept's content, metadata, and vector-index entry are preserved. Cross-links from other concepts are not updated automatically (per OKF spec, consumers tolerate broken links).
+
 ## okf delete \<concept-id\>
 
 Remove a concept.

@@ -88,7 +88,7 @@ This can live at:
 ## Verify Connection
 
 1. Reconnect the MCP server from Kiro's command palette (search "MCP")
-2. The server should show as connected with 9 tools available
+2. The server should show as connected with 10 tools available
 3. Test by asking Kiro: "list all concepts in my knowledge bundle"
 
 ## Available Tools
@@ -98,6 +98,7 @@ This can live at:
 | `init_bundle` | Create a new bundle at a given path |
 | `commit_concept` | Add a new concept (title, type, content, tags) |
 | `update_concept` | Modify fields on an existing concept |
+| `move_concept` | Move or rename a concept |
 | `delete_concept` | Remove a concept |
 | `fetch_concepts` | Semantic/hybrid search with natural language |
 | `list_concepts` | Browse concepts with filters |

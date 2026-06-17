@@ -240,6 +240,23 @@ def update(ctx: click.Context, concept_id: str, **kwargs) -> None:
 
 @okf.command()
 @click.argument("concept_id")
+@click.argument("new_concept_id")
+@click.option("--title", help="New title (updates frontmatter)")
+@click.pass_context
+def move(ctx: click.Context, concept_id: str, new_concept_id: str, title: str | None) -> None:
+    """Move or rename a concept to a new concept_id."""
+    from .service import move_concept
+
+    try:
+        config = load_config()
+        result_id = move_concept(config, concept_id, new_concept_id, title)
+        _output(ctx, {"old_concept_id": concept_id, "new_concept_id": result_id})
+    except OkfError as e:
+        _handle_error(ctx, str(e))
+
+
+@okf.command()
+@click.argument("concept_id")
 @click.pass_context
 def delete(ctx: click.Context, concept_id: str) -> None:
     """Delete a concept from the bundle."""

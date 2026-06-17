@@ -29,6 +29,7 @@ You have access to okf-mcp via MCP — a set of tools for managing OKF knowledge
 | `list_concepts` | Browsing what's available. Params: optional `type`, `tags`, `since`, `limit`, `path`. |
 | `commit_concept` | After discovering something worth persisting. Params: `title`, `type`, `content`, optional `tags`, `path`, `check_duplicates`. |
 | `update_concept` | When existing knowledge needs correction. Params: `concept_id`, plus optional `title`, `type`, `tags`, `content`. |
+| `move_concept` | When a concept needs relocating or renaming. Params: `concept_id`, `new_concept_id`, optional `new_title`. |
 | `delete_concept` | When a concept is obsolete. Rarely needed. Params: `concept_id`. |
 | `reindex` | After external changes to .md files (manual edits, git pulls). Params: optional `full`. |
 | `get_stats` | Understanding bundle health. No params. |
@@ -42,6 +43,7 @@ All tools return JSON strings. Parse the result to extract data:
 - `show_concept` → `{"concept_id": "...", "title": "...", "type": "...", "tags": [...], "body": "..."}`
 - `list_concepts` → `{"concepts": [{"concept_id": "...", "title": "...", "type": "...", "tags": [...]}]}`
 - `commit_concept` → `{"concept_id": "..."}`
+- `move_concept` → `{"old_concept_id": "...", "new_concept_id": "..."}`
 - `get_stats` → `{"concept_count": N, "type_distribution": {...}, ...}`
 
 ## Concept Types
