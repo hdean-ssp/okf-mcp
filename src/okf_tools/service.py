@@ -171,6 +171,80 @@ def update_concept(config: OkfConfig, concept_id: str, updates: Dict[str, Any]) 
     return concept_id
 
 
+def move_concept(
+    config: OkfConfig, concept_id: str, new_concept_id: str, new_title: Optional[str] = None
+) -> str:
+    """Move/rename a concept. Returns the new concept_id.
+
+    Moves the concept file to the new location, updates index files in both
+    the source and destination directories, re-indexes under the new ID, and
+    optionally updates the title in frontmatter.
+    """
+    bundle_path = config.bundle_path
+
+    # Validate source exists
+    old_path = _resolve_concept_path(config, concept_id)
+
+    # Validate new_concept_id
+    if not new_concept_id or not new_concept_id.strip():
+        raise ValidationError(["new_concept_id must be a non-empty string"])
+
+    # Normalise: strip leading/trailing slashes, collapse duplicates
+    new_concept_id = new_concept_id.strip("/")
+    if not new_concept_id:
+        raise ValidationError(["new_concept_id must be a non-empty path"])
+
+    # Prevent no-op moves
+    if new_concept_id == concept_id:
+        raise ValidationError(["new_concept_id is the same as the current concept_id"])
+
+    # Check destination doesn't already exist
+    new_path = bundle_path / (new_concept_id + ".md")
+    if new_path.exists():
+        raise ValidationError(
+            [f"A concept already exists at '{new_concept_id}'"]
+        )
+
+    # Parse existing concept
+    concept = parse_concept(old_path, bundle_path)
+
+    # Update title if requested
+    old_title = concept.title
+    if new_title is not None:
+        concept.frontmatter["title"] = new_title
+
+    # Update concept identity to new location
+    concept.concept_id = new_concept_id
+    concept.file_path = new_path
+
+    # Ensure destination directory exists and write
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    write_concept(concept, bundle_path)
+
+    # Remove old file
+    old_path.unlink()
+
+    # Update index files: remove from old directory, add to new
+    remove_from_index_file(old_path.parent, concept_id)
+    display_title = concept.title or new_concept_id.split("/")[-1]
+    update_index_file(new_path.parent, new_concept_id, display_title)
+
+    # Update vector index: delete old entry, insert new
+    index = VectorIndex(config.index_db_path)
+    try:
+        index.delete(concept_id)
+    finally:
+        index.close()
+    _embed_and_index(config, concept)
+
+    # Git add both old (deletion) and new (creation)
+    if config.auto_git_add:
+        _git_add(bundle_path, old_path)
+        _git_add(bundle_path, new_path)
+
+    return new_concept_id
+
+
 def delete_concept(config: OkfConfig, concept_id: str) -> None:
     """Full delete workflow."""
     bundle_path = config.bundle_path

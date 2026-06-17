@@ -173,6 +173,39 @@ def update_concept(
 
 
 @mcp.tool()
+def move_concept(
+    concept_id: str,
+    new_concept_id: str,
+    new_title: Optional[str] = None,
+) -> str:
+    """Move or rename a concept within the bundle.
+
+    Changes the concept's location (and therefore its concept_id) without
+    losing content, metadata, or vector-index history. Optionally updates
+    the title in frontmatter at the same time.
+
+    Examples:
+      - Rename: concept_id="notes/old-name", new_concept_id="notes/new-name"
+      - Move:   concept_id="drafts/idea", new_concept_id="published/idea"
+      - Both:   concept_id="tmp/scratch", new_concept_id="guides/setup-guide", new_title="Setup Guide"
+    """
+    try:
+        config = _require_bundle()
+        try:
+            result_id = service.move_concept(config, concept_id, new_concept_id, new_title)
+            return json.dumps({"old_concept_id": concept_id, "new_concept_id": result_id})
+        except ConceptNotFoundError as e:
+            raise ToolError(_handle_error(e))
+        except ValidationError as e:
+            raise ToolError(_handle_error(e))
+    except ToolError:
+        raise
+    except Exception:
+        logging.getLogger(__name__).error("Unexpected error in move_concept", exc_info=True)
+        raise ToolError("An internal error occurred")
+
+
+@mcp.tool()
 def delete_concept(concept_id: str) -> str:
     """Delete a concept from the bundle by its concept_id."""
     try:
