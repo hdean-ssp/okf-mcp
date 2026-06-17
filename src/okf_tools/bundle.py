@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -124,8 +125,15 @@ def _is_iso8601(value: Any) -> bool:
 
 
 def generate_slug(title: str) -> str:
-    """Create URL-safe filename from title: lowercase, hyphens, max 60 chars."""
-    slug = title.lower()
+    """Create URL-safe filename from title: lowercase, hyphens, max 60 chars.
+
+    Normalizes unicode characters (e.g. 'café' → 'cafe') before stripping
+    non-ASCII, producing readable slugs for internationalized titles.
+    """
+    # Normalize unicode: decompose accented chars, then strip combining marks
+    slug = unicodedata.normalize("NFKD", title)
+    slug = "".join(c for c in slug if not unicodedata.combining(c))
+    slug = slug.lower()
     slug = re.sub(r"\s+", "-", slug)
     slug = re.sub(r"[^a-z0-9-]", "", slug)
     slug = re.sub(r"-{2,}", "-", slug)
@@ -199,8 +207,8 @@ def update_index_file(directory: Path, concept_id: str, title: str) -> None:
         # Check if entry for this file already exists
         pattern = re.compile(rf"- \[.*\]\(\./{ re.escape(filename) }\)")
         if pattern.search(content):
-            # Update existing entry
-            content = pattern.sub(entry, content)
+            # Update existing entry (use lambda to avoid backslash interpretation in replacement)
+            content = pattern.sub(lambda _: entry, content)
         else:
             # Append new entry
             content = content.rstrip("\n") + "\n" + entry + "\n"

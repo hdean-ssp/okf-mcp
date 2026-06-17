@@ -113,9 +113,9 @@ class TestSlug:
     def test_empty_string(self):
         assert generate_slug("") == ""
 
-    def test_unicode_removed(self):
+    def test_unicode_normalized(self):
         slug = generate_slug("café résumé")
-        assert slug == "caf-rsum"  # non-ascii letters removed
+        assert slug == "cafe-resume"
 
 
 class TestResolveUniquePath:

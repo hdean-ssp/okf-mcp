@@ -1,14 +1,19 @@
 """MCP server exposing okf-mcp service functions as MCP tools.
 
 All diagnostic output goes to stderr (never stdout — that's the JSON-RPC channel).
+Tool handlers are async, using asyncio.to_thread() for blocking service calls
+(embedding, SQLite I/O) to avoid blocking the MCP event loop.
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
+import atexit
 import json
 import logging
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
@@ -23,10 +28,37 @@ from .errors import (
     OkfError,
     ValidationError,
 )
+from .service import close_all_indexes
 
 mcp = FastMCP("okf-mcp")
 
-_config: Optional[OkfConfig] = None
+
+@dataclass
+class AppState:
+    """Application state for the MCP server process.
+
+    Encapsulates configuration and runtime state in a single object,
+    replacing bare module-level globals.
+    """
+
+    config: Optional[OkfConfig] = None
+
+    def set_config(self, config: OkfConfig) -> None:
+        """Update the active bundle configuration."""
+        self.config = config
+
+    def require_bundle(self) -> OkfConfig:
+        """Return config or raise ToolError if no bundle is configured."""
+        if self.config is None:
+            raise ToolError(
+                "No bundle configured. Use init_bundle to create one, "
+                "or restart the server with --bundle-path pointing to an existing bundle."
+            )
+        return self.config
+
+
+# Singleton application state — tool handlers access this.
+_state = AppState()
 
 
 def _require_bundle() -> OkfConfig:
@@ -35,12 +67,7 @@ def _require_bundle() -> OkfConfig:
     Tool handlers that require a configured bundle call this before
     invoking service functions.
     """
-    if _config is None:
-        raise ToolError(
-            "No bundle configured. Use init_bundle to create one, "
-            "or restart the server with --bundle-path pointing to an existing bundle."
-        )
-    return _config
+    return _state.require_bundle()
 
 
 def _handle_error(e: OkfError) -> str:
@@ -59,7 +86,7 @@ def _handle_error(e: OkfError) -> str:
 
 
 @mcp.tool()
-def commit_concept(
+async def commit_concept(
     title: str,
     type: str,
     content: str,
@@ -85,7 +112,7 @@ def commit_concept(
                 input_data["tags"] = tags
             if path is not None:
                 input_data["path"] = path
-            concept_id = service.commit_concept(config, input_data)
+            concept_id = await asyncio.to_thread(service.commit_concept, config, input_data)
             return json.dumps({"concept_id": concept_id})
         except ValidationError as e:
             raise ToolError(_handle_error(e))
@@ -97,14 +124,12 @@ def commit_concept(
 
 
 @mcp.tool()
-def init_bundle(path: str = ".") -> str:
+async def init_bundle(path: str = ".") -> str:
     """Initialize a new OKF knowledge bundle at the specified path.
 
     Creates .okf/config.json, a root index.md, and updates .gitignore if in a git repo.
     This is the only tool that does not require a pre-configured bundle.
     """
-    global _config
-
     try:
         resolved = Path(path).resolve()
         if not resolved.exists() or not resolved.is_dir():
@@ -113,11 +138,11 @@ def init_bundle(path: str = ".") -> str:
             )
 
         try:
-            service.init_bundle(resolved)
+            await asyncio.to_thread(service.init_bundle, resolved)
         except BundleAlreadyInitialisedError as e:
             raise ToolError(str(e))
 
-        _config = load_config(resolved)
+        _state.set_config(load_config(resolved))
         return json.dumps({"path": str(resolved)})
     except ToolError:
         raise
@@ -127,7 +152,7 @@ def init_bundle(path: str = ".") -> str:
 
 
 @mcp.tool()
-def update_concept(
+async def update_concept(
     concept_id: str,
     title: Optional[str] = None,
     type: Optional[str] = None,
@@ -158,7 +183,7 @@ def update_concept(
             )
 
         try:
-            service.update_concept(config, concept_id, updates)
+            await asyncio.to_thread(service.update_concept, config, concept_id, updates)
         except ConceptNotFoundError as e:
             raise ToolError(_handle_error(e))
         except ValidationError as e:
@@ -173,7 +198,7 @@ def update_concept(
 
 
 @mcp.tool()
-def move_concept(
+async def move_concept(
     concept_id: str,
     new_concept_id: str,
     new_title: Optional[str] = None,
@@ -192,7 +217,9 @@ def move_concept(
     try:
         config = _require_bundle()
         try:
-            result_id = service.move_concept(config, concept_id, new_concept_id, new_title)
+            result_id = await asyncio.to_thread(
+                service.move_concept, config, concept_id, new_concept_id, new_title
+            )
             return json.dumps({"old_concept_id": concept_id, "new_concept_id": result_id})
         except ConceptNotFoundError as e:
             raise ToolError(_handle_error(e))
@@ -206,12 +233,12 @@ def move_concept(
 
 
 @mcp.tool()
-def delete_concept(concept_id: str) -> str:
+async def delete_concept(concept_id: str) -> str:
     """Delete a concept from the bundle by its concept_id."""
     try:
         config = _require_bundle()
         try:
-            service.delete_concept(config, concept_id)
+            await asyncio.to_thread(service.delete_concept, config, concept_id)
             return json.dumps({"concept_id": concept_id})
         except ConceptNotFoundError as e:
             raise ToolError(_handle_error(e))
@@ -223,7 +250,7 @@ def delete_concept(concept_id: str) -> str:
 
 
 @mcp.tool()
-def show_concept(concept_id: str) -> str:
+async def show_concept(concept_id: str) -> str:
     """Show the full details of a concept by its concept_id.
 
     Returns all frontmatter fields and the complete markdown body.
@@ -231,7 +258,7 @@ def show_concept(concept_id: str) -> str:
     try:
         config = _require_bundle()
         try:
-            concept = service.show_concept(config, concept_id)
+            concept = await asyncio.to_thread(service.show_concept, config, concept_id)
             result = {"concept_id": concept.concept_id, **concept.frontmatter, "body": concept.body}
             return json.dumps(result)
         except ConceptNotFoundError as e:
@@ -244,7 +271,7 @@ def show_concept(concept_id: str) -> str:
 
 
 @mcp.tool()
-def reindex(full: bool = False) -> str:
+async def reindex(full: bool = False) -> str:
     """Rebuild the vector index for the knowledge bundle.
 
     Performs an incremental reindex by default (only processes changed files).
@@ -255,7 +282,7 @@ def reindex(full: bool = False) -> str:
     """
     try:
         config = _require_bundle()
-        summary = service.reindex(config, full)
+        summary = await asyncio.to_thread(service.reindex, config, full)
         return json.dumps(summary)
     except ToolError:
         raise
@@ -265,7 +292,7 @@ def reindex(full: bool = False) -> str:
 
 
 @mcp.tool()
-def fetch_concepts(
+async def fetch_concepts(
     query: str,
     top_n: int = 5,
     threshold: float = 0.0,
@@ -284,8 +311,9 @@ def fetch_concepts(
         if not query.strip():
             raise ToolError("A non-empty query is required")
 
-        results = service.fetch_concepts(
-            config, query, top_n, threshold, type_filter=type, tags_filter=tags, mode=mode
+        results = await asyncio.to_thread(
+            service.fetch_concepts,
+            config, query, top_n, threshold, type, tags, mode,
         )
 
         formatted_results = [
@@ -307,7 +335,7 @@ def fetch_concepts(
 
 
 @mcp.tool()
-def list_concepts(
+async def list_concepts(
     type: Optional[str] = None,
     tags: Optional[List[str]] = None,
     since: Optional[str] = None,
@@ -321,13 +349,14 @@ def list_concepts(
     """
     try:
         config = _require_bundle()
-        concepts = service.list_concepts(
+        concepts = await asyncio.to_thread(
+            service.list_concepts,
             config,
-            type_filter=type,
-            tags_filter=tags,
-            since=since,
-            limit=limit,
-            path_filter=path,
+            type,
+            tags,
+            since,
+            limit,
+            path,
         )
         formatted = [
             {
@@ -347,7 +376,7 @@ def list_concepts(
 
 
 @mcp.tool()
-def get_stats() -> str:
+async def get_stats() -> str:
     """Return bundle health statistics.
 
     Returns concept count, type/tag distributions, last reindex timestamp,
@@ -355,7 +384,7 @@ def get_stats() -> str:
     """
     try:
         config = _require_bundle()
-        stats = service.get_stats(config)
+        stats = await asyncio.to_thread(service.get_stats, config)
         return json.dumps(stats)
     except ToolError:
         raise
@@ -370,8 +399,6 @@ def main() -> None:
     Parses --bundle-path, resolves configuration, configures stderr logging,
     and starts the MCP server over stdio transport.
     """
-    global _config
-
     parser = argparse.ArgumentParser(
         description="OKF Tools MCP Server",
         prog="okf-mcp",
@@ -401,12 +428,27 @@ def main() -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
-        _config = load_config(bundle_path.resolve())
+        _state.set_config(load_config(bundle_path.resolve()))
     else:
         root = find_bundle_root()
         if root is not None:
-            _config = load_config(root)
-        # else: _config stays None — init_bundle can be called later
+            _state.set_config(load_config(root))
+        # else: _state.config stays None — init_bundle can be called later
+
+    # Register cleanup for cached index connections
+    atexit.register(close_all_indexes)
+
+    # Pre-warm the embedding model to avoid a 30-second delay on first tool call.
+    # The model (~30MB) downloads on first use; doing it at startup means MCP
+    # clients won't time out waiting for the first embed operation.
+    if _state.config is not None:
+        try:
+            from .search import get_embedder
+            print("Loading embedding model...", file=sys.stderr)
+            get_embedder(_state.config.embedding_model)
+            print("Embedding model ready.", file=sys.stderr)
+        except Exception as e:
+            print(f"Warning: failed to pre-load embedding model: {e}", file=sys.stderr)
 
     mcp.run(transport="stdio")
 

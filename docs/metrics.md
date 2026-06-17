@@ -205,7 +205,7 @@ observations:
 
 ## Integration with okf-mcp (Future)
 
-Tasks for potential future implementation (tracked in TASKS.md):
+Potential future CLI additions:
 
 - `okf metrics log` — append an observation to `metrics/observations.yaml` via CLI
 - `okf metrics summary` — generate a summary table from collected observations

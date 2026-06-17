@@ -32,6 +32,7 @@ cat > ~/.kiro/settings/mcp.json << 'EOF'
         "get_stats",
         "init_bundle",
         "list_concepts",
+        "move_concept",
         "reindex",
         "show_concept",
         "update_concept"

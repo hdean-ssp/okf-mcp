@@ -6,6 +6,7 @@ Core-only: single bundle, no graph, no lint, no skills.
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -29,6 +30,41 @@ from .errors import (
 )
 from .search import SearchResult, VectorIndex, embed_text
 from .sync import SyncSummary, full_reindex, incremental_reindex
+
+
+# --- Index connection cache ---
+# Long-running processes (MCP server) benefit from reusing VectorIndex
+# connections rather than opening/closing on every call.
+
+_index_cache: Dict[str, VectorIndex] = {}
+
+
+def get_index(config: OkfConfig) -> VectorIndex:
+    """Return a cached VectorIndex for the given config, creating one if needed.
+
+    Connections are cached by database path. This avoids 'database is locked'
+    errors under concurrent access from the same process and removes the
+    overhead of repeated open/close cycles in long-running servers.
+    """
+    key = str(config.index_db_path)
+    if key not in _index_cache:
+        _index_cache[key] = VectorIndex(config.index_db_path)
+    return _index_cache[key]
+
+
+def close_index(config: OkfConfig) -> None:
+    """Close and remove the cached index for a config. Safe to call if not cached."""
+    key = str(config.index_db_path)
+    idx = _index_cache.pop(key, None)
+    if idx is not None:
+        idx.close()
+
+
+def close_all_indexes() -> None:
+    """Close all cached indexes. Called on process shutdown."""
+    for idx in _index_cache.values():
+        idx.close()
+    _index_cache.clear()
 
 
 def init_bundle(path: Path) -> None:
@@ -95,7 +131,9 @@ def commit_concept(config: OkfConfig, input_data: Dict[str, Any]) -> str:
     # Determine target directory
     target_dir = bundle_path
     if input_data.get("path"):
-        target_dir = bundle_path / input_data["path"]
+        target_dir = (bundle_path / input_data["path"]).resolve()
+        if not target_dir.is_relative_to(bundle_path.resolve()):
+            raise ValidationError(["Invalid path: resolves outside the bundle"])
         target_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate slug and resolve unique path
@@ -199,7 +237,9 @@ def move_concept(
         raise ValidationError(["new_concept_id is the same as the current concept_id"])
 
     # Check destination doesn't already exist
-    new_path = bundle_path / (new_concept_id + ".md")
+    new_path = (bundle_path / (new_concept_id + ".md")).resolve()
+    if not new_path.is_relative_to(bundle_path.resolve()):
+        raise ValidationError(["Invalid new_concept_id: path resolves outside the bundle"])
     if new_path.exists():
         raise ValidationError(
             [f"A concept already exists at '{new_concept_id}'"]
@@ -230,11 +270,8 @@ def move_concept(
     update_index_file(new_path.parent, new_concept_id, display_title)
 
     # Update vector index: delete old entry, insert new
-    index = VectorIndex(config.index_db_path)
-    try:
-        index.delete(concept_id)
-    finally:
-        index.close()
+    index = get_index(config)
+    index.delete(concept_id)
     _embed_and_index(config, concept)
 
     # Git add both old (deletion) and new (creation)
@@ -257,11 +294,8 @@ def delete_concept(config: OkfConfig, concept_id: str) -> None:
     remove_from_index_file(file_path.parent, concept_id)
 
     # Remove from vector index
-    index = VectorIndex(config.index_db_path)
-    try:
-        index.delete(concept_id)
-    finally:
-        index.close()
+    index = get_index(config)
+    index.delete(concept_id)
 
     # Git add deletion
     if config.auto_git_add:
@@ -277,36 +311,26 @@ def fetch_concepts(
     tags_filter: Optional[List[str]] = None,
     mode: str = "hybrid",
 ) -> List[SearchResult]:
-    """Semantic search workflow."""
+    """Semantic search workflow.
+
+    Filters are pushed into the search queries at the SQL level for
+    efficient filtering that always returns the correct number of results.
+    """
     n = top_n or config.default_top_n
     t = threshold if threshold is not None else 0.0
 
     if not config.index_db_path.exists():
         return []
 
-    index = VectorIndex(config.index_db_path)
-    try:
-        if mode == "keyword":
-            results = index.search_keyword(query, n * 3)
-        else:
-            query_embedding = embed_text(query, config.embedding_model)
-            results = index.search(
-                query_embedding, n * 3, t, query=query, mode=mode
-            )
-
-        # Apply metadata filters
-        if type_filter:
-            results = [
-                r for r in results
-                if _matches_type(index, r.concept_id, type_filter)
-            ]
-        if tags_filter:
-            results = [
-                r for r in results
-                if _matches_tags(index, r.concept_id, tags_filter)
-            ]
-    finally:
-        index.close()
+    index = get_index(config)
+    if mode == "keyword":
+        results = index.search_keyword(query, n, type_filter=type_filter, tags_filter=tags_filter)
+    else:
+        query_embedding = embed_text(query, config.embedding_model)
+        results = index.search(
+            query_embedding, n, t, query=query, mode=mode,
+            type_filter=type_filter, tags_filter=tags_filter,
+        )
 
     return results[:n]
 
@@ -359,14 +383,11 @@ def show_concept(config: OkfConfig, concept_id: str) -> Concept:
 
 def reindex(config: OkfConfig, full: bool = False) -> Dict[str, Any]:
     """Index rebuild. Returns summary dict."""
-    index = VectorIndex(config.index_db_path)
-    try:
-        if full or index.get_sync_timestamp() is None:
-            summary = full_reindex(config.bundle_path, index, config)
-        else:
-            summary = incremental_reindex(config.bundle_path, index, config)
-    finally:
-        index.close()
+    index = get_index(config)
+    if full or index.get_sync_timestamp() is None:
+        summary = full_reindex(config.bundle_path, index, config)
+    else:
+        summary = incremental_reindex(config.bundle_path, index, config)
 
     return {
         "added": summary.added,
@@ -391,12 +412,9 @@ def get_stats(config: OkfConfig) -> Dict[str, Any]:
         for tag in c.tags:
             tag_dist[tag] = tag_dist.get(tag, 0) + 1
 
-    index = VectorIndex(config.index_db_path)
-    try:
-        last_sync = index.get_sync_timestamp()
-        indexed_count = index.concept_count()
-    finally:
-        index.close()
+    index = get_index(config)
+    last_sync = index.get_sync_timestamp()
+    indexed_count = index.concept_count()
 
     pending = len(concepts) - indexed_count
 
@@ -414,7 +432,9 @@ def get_stats(config: OkfConfig) -> Dict[str, Any]:
 
 def _resolve_concept_path(config: OkfConfig, concept_id: str) -> Path:
     """Resolve concept_id to file path. Raises ConceptNotFoundError if missing."""
-    file_path = config.bundle_path / (concept_id + ".md")
+    file_path = (config.bundle_path / (concept_id + ".md")).resolve()
+    if not file_path.is_relative_to(config.bundle_path.resolve()):
+        raise ValidationError([f"Invalid concept_id: path resolves outside the bundle"])
     if not file_path.exists():
         raise ConceptNotFoundError(concept_id)
     return file_path
@@ -422,20 +442,17 @@ def _resolve_concept_path(config: OkfConfig, concept_id: str) -> Path:
 
 def _embed_and_index(config: OkfConfig, concept: Concept) -> None:
     """Embed concept body and upsert into the index."""
-    index = VectorIndex(config.index_db_path)
-    try:
-        embedding = embed_text(concept.body, config.embedding_model)
-        metadata = {
-            "title": concept.title,
-            "type": concept.type,
-            "tags": concept.tags,
-            "mtime": concept.file_path.stat().st_mtime,
-            "snippet": concept.body[:200],
-            "body": concept.body,
-        }
-        index.upsert(concept.concept_id, embedding, metadata)
-    finally:
-        index.close()
+    index = get_index(config)
+    embedding = embed_text(concept.body, config.embedding_model)
+    metadata = {
+        "title": concept.title,
+        "type": concept.type,
+        "tags": concept.tags,
+        "mtime": concept.file_path.stat().st_mtime,
+        "snippet": concept.body[:200],
+        "body": concept.body,
+    }
+    index.upsert(concept.concept_id, embedding, metadata)
 
 
 def _concept_matches_since(concept: Concept, since: str) -> bool:
@@ -481,50 +498,44 @@ def _check_duplicates(config: OkfConfig, content: str, force: bool) -> None:
     """Check for similar existing concepts.
 
     Raises ValidationError if found and not forced.
+    Logs a warning if the index doesn't exist yet (duplicate check is skipped).
     """
     if not config.index_db_path.exists():
+        logging.getLogger(__name__).warning(
+            "Duplicate check skipped: no search index exists yet. "
+            "Run `okf reindex` to enable duplicate detection."
+        )
         return
 
     embedding = embed_text(content, config.embedding_model)
-    index = VectorIndex(config.index_db_path)
-    try:
-        results = index.search(embedding, 5, config.similarity_threshold)
-        if results and not force:
-            dup_list = "\n  ".join(
-                f"{r.concept_id} \"{r.title}\" (score={r.score}) — {r.snippet[:80]}..."
-                for r in results
-            )
-            raise ValidationError([
-                f"Similar concepts already exist:\n  {dup_list}\n"
-                f"Use --force to commit anyway."
-            ])
-    finally:
-        index.close()
-
-
-def _matches_type(index: VectorIndex, concept_id: str, type_filter: str) -> bool:
-    """Check if a concept matches a type filter."""
-    meta = index.get_metadata(concept_id)
-    return meta is not None and meta.get("type") == type_filter
-
-
-def _matches_tags(index: VectorIndex, concept_id: str, tags_filter: List[str]) -> bool:
-    """Check if a concept matches a tags filter."""
-    meta = index.get_metadata(concept_id)
-    if meta is None:
-        return False
-    concept_tags = meta.get("tags", [])
-    return bool(set(concept_tags) & set(tags_filter))
+    index = get_index(config)
+    results = index.search(embedding, 5, config.similarity_threshold)
+    if results and not force:
+        dup_list = "\n  ".join(
+            f"{r.concept_id} \"{r.title}\" (score={r.score}) — {r.snippet[:80]}..."
+            for r in results
+        )
+        raise ValidationError([
+            f"Similar concepts already exist:\n  {dup_list}\n"
+            f"Use --force to commit anyway."
+        ])
 
 
 def _git_add(bundle_root: Path, file_path: Path) -> None:
-    """Run git add on a file. Silently fails if not in a git repo."""
+    """Run git add on a file. Logs a warning on failure."""
     try:
-        subprocess.run(
+        result = subprocess.run(
             ["git", "add", str(file_path)],
             cwd=str(bundle_root),
             capture_output=True,
             timeout=5,
         )
-    except (subprocess.SubprocessError, FileNotFoundError):
-        pass
+        if result.returncode != 0:
+            stderr = result.stderr.decode("utf-8", errors="replace").strip()
+            logging.getLogger(__name__).warning(
+                "git add failed for %s: %s", file_path, stderr or f"exit code {result.returncode}"
+            )
+    except FileNotFoundError:
+        logging.getLogger(__name__).debug("git not found on PATH, skipping auto-add")
+    except subprocess.SubprocessError as e:
+        logging.getLogger(__name__).warning("git add failed for %s: %s", file_path, e)

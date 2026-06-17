@@ -2,12 +2,27 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
 import pytest
 
 from okf_tools.config import OkfConfig
+
+
+def run_async(coro):
+    """Run an async coroutine synchronously. Used by tests that call async tool handlers."""
+    return asyncio.run(coro)
+
+
+@pytest.fixture(autouse=True)
+def _clear_index_cache():
+    """Clear the service-layer index cache between tests."""
+    from okf_tools.service import _index_cache
+    _index_cache.clear()
+    yield
+    _index_cache.clear()
 
 
 @pytest.fixture

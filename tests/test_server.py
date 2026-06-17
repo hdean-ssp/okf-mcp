@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -22,16 +23,31 @@ from okf_tools.errors import (
 from okf_tools.server import (
     _handle_error,
     _require_bundle,
-    init_bundle,
-    commit_concept,
-    update_concept,
-    delete_concept,
-    fetch_concepts,
-    list_concepts,
-    show_concept,
-    reindex,
-    get_stats,
+    _state as server_state,
 )
+from okf_tools.server import (
+    init_bundle as _init_bundle_async,
+    commit_concept as _commit_concept_async,
+    update_concept as _update_concept_async,
+    delete_concept as _delete_concept_async,
+    fetch_concepts as _fetch_concepts_async,
+    list_concepts as _list_concepts_async,
+    show_concept as _show_concept_async,
+    reindex as _reindex_async,
+    get_stats as _get_stats_async,
+)
+
+
+# Sync wrappers for async tool handlers (avoids rewriting every test to async)
+def init_bundle(**kw): return asyncio.run(_init_bundle_async(**kw))
+def commit_concept(**kw): return asyncio.run(_commit_concept_async(**kw))
+def update_concept(**kw): return asyncio.run(_update_concept_async(**kw))
+def delete_concept(**kw): return asyncio.run(_delete_concept_async(**kw))
+def fetch_concepts(**kw): return asyncio.run(_fetch_concepts_async(**kw))
+def list_concepts(**kw): return asyncio.run(_list_concepts_async(**kw))
+def show_concept(**kw): return asyncio.run(_show_concept_async(**kw))
+def reindex(**kw): return asyncio.run(_reindex_async(**kw))
+def get_stats(**kw): return asyncio.run(_get_stats_async(**kw))
 
 
 # ---------------------------------------------------------------------------
@@ -41,8 +57,8 @@ from okf_tools.server import (
 
 @pytest.fixture
 def configured_server(sample_config):
-    """Patch server._config so tool handlers have a configured bundle."""
-    with patch("okf_tools.server._config", sample_config):
+    """Set server state so tool handlers have a configured bundle."""
+    with patch.object(server_state, "config", sample_config):
         yield sample_config
 
 
@@ -69,7 +85,7 @@ class TestRequireBundle:
 
     def test_raises_tool_error_when_config_is_none(self):
         """_require_bundle raises ToolError when no bundle is configured."""
-        with patch("okf_tools.server._config", None):
+        with patch.object(server_state, "config", None):
             with pytest.raises(ToolError) as exc_info:
                 _require_bundle()
             assert "No bundle configured" in str(exc_info.value)
@@ -86,7 +102,7 @@ class TestRequireBundle:
             similarity_threshold=0.85,
             auto_git_add=True,
         )
-        with patch("okf_tools.server._config", config):
+        with patch.object(server_state, "config", config):
             result = _require_bundle()
             assert result is config
 
@@ -173,14 +189,14 @@ class TestMain:
         assert "not a directory" in captured.err
 
     def test_no_bundle_path_no_bundle_found_starts_with_none(self):
-        """When no bundle found and no --bundle-path, _config is None."""
+        """When no bundle found and no --bundle-path, _state.config is None."""
         import okf_tools.server as server_module
 
         with patch.object(sys, "argv", ["okf-mcp"]):
             with patch("okf_tools.server.find_bundle_root", return_value=None):
                 with patch.object(server_module.mcp, "run"):
                     server_module.main()
-                    assert server_module._config is None
+                    assert server_module._state.config is None
 
     def test_bundle_path_arg_loads_config(self, tmp_path):
         """When --bundle-path is valid, config is loaded from that path."""
@@ -194,8 +210,8 @@ class TestMain:
         with patch.object(sys, "argv", ["okf-mcp", "--bundle-path", str(tmp_path)]):
             with patch.object(server_module.mcp, "run"):
                 server_module.main()
-                assert server_module._config is not None
-                assert server_module._config.bundle_path == tmp_path.resolve()
+                assert server_module._state.config is not None
+                assert server_module._state.config.bundle_path == tmp_path.resolve()
 
     def test_auto_discover_bundle(self, tmp_path):
         """When no --bundle-path is given but a bundle exists, config is loaded."""
@@ -217,7 +233,7 @@ class TestMain:
                     with patch.object(server_module.mcp, "run"):
                         server_module.main()
                         mock_load.assert_called_once_with(tmp_path)
-                        assert server_module._config is not None
+                        assert server_module._state.config is not None
 
 
 class TestInitBundle:
@@ -321,7 +337,7 @@ class TestCommitConcept:
 
     def test_commit_no_bundle_returns_error(self):
         """commit_concept when no bundle configured raises ToolError."""
-        with patch("okf_tools.server._config", None):
+        with patch.object(server_state, "config", None):
             with pytest.raises(ToolError) as exc_info:
                 commit_concept(title="Test", type="pattern", content="content")
             assert "No bundle configured" in str(exc_info.value)
@@ -495,7 +511,7 @@ class TestGetStats:
 
     def test_get_stats_no_bundle_returns_error(self):
         """get_stats with no bundle configured raises ToolError."""
-        with patch("okf_tools.server._config", None):
+        with patch.object(server_state, "config", None):
             with pytest.raises(ToolError) as exc_info:
                 get_stats()
             assert "No bundle configured" in str(exc_info.value)

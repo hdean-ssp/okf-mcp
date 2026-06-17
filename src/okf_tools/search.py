@@ -160,23 +160,33 @@ class VectorIndex:
     # --- Search methods ---
 
     def search_semantic(
-        self, query_embedding: np.ndarray, top_n: int, threshold: float
+        self, query_embedding: np.ndarray, top_n: int, threshold: float,
+        type_filter: Optional[str] = None, tags_filter: Optional[List[str]] = None,
     ) -> List[SearchResult]:
-        """Pure vector cosine similarity search."""
+        """Pure vector cosine similarity search with optional metadata filters."""
+        # sqlite-vec requires fetching by k, then we filter. Fetch extra to
+        # account for filtered-out results.
+        fetch_k = top_n * 3 if (type_filter or tags_filter) else top_n
         rows = self._conn.execute(
             """
-            SELECT v.concept_id, v.distance, c.title, c.snippet
+            SELECT v.concept_id, v.distance, c.title, c.snippet, c.type, c.tags
             FROM vec_concepts v
             JOIN concepts c ON v.concept_id = c.concept_id
             WHERE v.embedding MATCH ?
                 AND k = ?
             ORDER BY v.distance
             """,
-            (query_embedding.tobytes(), top_n),
+            (query_embedding.tobytes(), fetch_k),
         ).fetchall()
 
         results = []
-        for concept_id, distance, title, snippet in rows:
+        for concept_id, distance, title, snippet, c_type, c_tags in rows:
+            if type_filter and c_type != type_filter:
+                continue
+            if tags_filter:
+                concept_tags = json.loads(c_tags) if c_tags else []
+                if not set(concept_tags) & set(tags_filter):
+                    continue
             score = 1.0 - distance
             if score >= threshold:
                 results.append(SearchResult(
@@ -185,6 +195,8 @@ class VectorIndex:
                     score=round(score, 4),
                     snippet=snippet or "",
                 ))
+            if len(results) >= top_n:
+                break
         return results
 
     @staticmethod
@@ -200,20 +212,45 @@ class VectorIndex:
         tokens = query.split()
         return " ".join(f'"{token}"' for token in tokens)
 
-    def search_keyword(self, query: str, top_n: int) -> List[SearchResult]:
-        """BM25 full-text keyword search via FTS5."""
+    def search_keyword(self, query: str, top_n: int,
+                       type_filter: Optional[str] = None,
+                       tags_filter: Optional[List[str]] = None) -> List[SearchResult]:
+        """BM25 full-text keyword search via FTS5 with optional metadata filters."""
         safe_query = self._escape_fts5_query(query)
-        rows = self._conn.execute(
-            """
+
+        # Build dynamic WHERE clause for metadata filters
+        conditions = ["fts_concepts MATCH ?"]
+        params: list = [safe_query]
+
+        if type_filter:
+            conditions.append("c.type = ?")
+            params.append(type_filter)
+
+        params.append(top_n)
+
+        where_clause = " AND ".join(conditions)
+        sql = f"""
             SELECT f.concept_id, rank, c.title, c.snippet
             FROM fts_concepts f
             JOIN concepts c ON f.concept_id = c.concept_id
-            WHERE fts_concepts MATCH ?
+            WHERE {where_clause}
             ORDER BY rank
             LIMIT ?
-            """,
-            (safe_query, top_n),
-        ).fetchall()
+        """
+        rows = self._conn.execute(sql, params).fetchall()
+
+        if not rows:
+            return []
+
+        # Apply tags filter in Python (JSON array in SQLite is awkward to query)
+        if tags_filter:
+            filtered_rows = []
+            for row in rows:
+                concept_id = row[0]
+                meta = self.get_metadata(concept_id)
+                if meta and set(meta.get("tags", [])) & set(tags_filter):
+                    filtered_rows.append(row)
+            rows = filtered_rows
 
         if not rows:
             return []
@@ -241,17 +278,26 @@ class VectorIndex:
         top_n: int,
         threshold: float,
         semantic_weight: float = 0.6,
+        type_filter: Optional[str] = None,
+        tags_filter: Optional[List[str]] = None,
     ) -> List[SearchResult]:
         """Hybrid search: merge BM25 keyword + vector semantic results.
 
         Fetches 2x top_n from each source, normalizes scores, and combines
         with weighted average (default 60% semantic, 40% keyword).
+        Filters are applied at the SQL level in each sub-query.
         """
         fetch_n = top_n * 2
 
-        # Get results from both engines
-        semantic_results = self.search_semantic(query_embedding, fetch_n, 0.0)
-        keyword_results = self.search_keyword(query, fetch_n)
+        # Get results from both engines with filters applied
+        semantic_results = self.search_semantic(
+            query_embedding, fetch_n, 0.0,
+            type_filter=type_filter, tags_filter=tags_filter,
+        )
+        keyword_results = self.search_keyword(
+            query, fetch_n,
+            type_filter=type_filter, tags_filter=tags_filter,
+        )
 
         # Build score maps
         semantic_scores: Dict[str, float] = {}
@@ -300,22 +346,28 @@ class VectorIndex:
         threshold: float,
         query: str = "",
         mode: str = "hybrid",
+        type_filter: Optional[str] = None,
+        tags_filter: Optional[List[str]] = None,
     ) -> List[SearchResult]:
         """Unified search interface.
 
         Modes: 'hybrid' (default), 'semantic', 'keyword'.
+        Filters are pushed into the SQL queries for efficient filtering.
         """
         if mode == "keyword":
             if not query:
                 return []
-            return self.search_keyword(query, top_n)
+            return self.search_keyword(query, top_n, type_filter=type_filter, tags_filter=tags_filter)
         elif mode == "semantic":
-            return self.search_semantic(query_embedding, top_n, threshold)
+            return self.search_semantic(query_embedding, top_n, threshold,
+                                       type_filter=type_filter, tags_filter=tags_filter)
         else:
             # Hybrid — needs both query text and embedding
             if not query:
-                return self.search_semantic(query_embedding, top_n, threshold)
-            return self.search_hybrid(query, query_embedding, top_n, threshold)
+                return self.search_semantic(query_embedding, top_n, threshold,
+                                           type_filter=type_filter, tags_filter=tags_filter)
+            return self.search_hybrid(query, query_embedding, top_n, threshold,
+                                     type_filter=type_filter, tags_filter=tags_filter)
 
     # --- Metadata accessors ---
 

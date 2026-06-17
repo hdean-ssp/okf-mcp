@@ -6,6 +6,7 @@ Validates: Requirements 3.2, 8.2
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -15,7 +16,36 @@ from hypothesis import given, HealthCheck, settings, strategies as st
 
 from okf_tools.config import OkfConfig
 from okf_tools.search import SearchResult
-from okf_tools.server import commit_concept, fetch_concepts, init_bundle, show_concept, update_concept
+from okf_tools.server import _state as server_state
+from okf_tools.server import (
+    commit_concept as _commit_async,
+    fetch_concepts as _fetch_async,
+    init_bundle as _init_async,
+    show_concept as _show_async,
+    update_concept as _update_async,
+)
+
+
+# Sync wrappers
+def commit_concept(**kw): return asyncio.run(_commit_async(**kw))
+def fetch_concepts(**kw): return asyncio.run(_fetch_async(**kw))
+def init_bundle(**kw): return asyncio.run(_init_async(**kw))
+def show_concept(**kw): return asyncio.run(_show_async(**kw))
+def update_concept(**kw): return asyncio.run(_update_async(**kw))
+
+
+# Additional wrappers used in individual property tests
+from okf_tools.server import (
+    delete_concept as _delete_async,
+    list_concepts as _list_async,
+    get_stats as _get_stats_async,
+    reindex as _reindex_async,
+    _handle_error,
+)
+def delete_concept(**kw): return asyncio.run(_delete_async(**kw))
+def list_concepts(**kw): return asyncio.run(_list_async(**kw))
+def get_stats(**kw): return asyncio.run(_get_stats_async(**kw))
+def reindex(**kw): return asyncio.run(_reindex_async(**kw))
 
 # ---------------------------------------------------------------------------
 # Hypothesis strategies for valid concept fields
@@ -81,7 +111,7 @@ def pbt_config(tmp_path):
         similarity_threshold=0.85,
         auto_git_add=False,
     )
-    with patch("okf_tools.server._config", config):
+    with patch.object(server_state, "config", config):
         yield config
 
 
@@ -132,7 +162,6 @@ def test_missing_required_fields_enumerated(fields_to_omit, pbt_config):
     (set to empty string), the validation error lists exactly those missing fields.
     """
     from mcp.server.fastmcp.exceptions import ToolError
-    from okf_tools.server import commit_concept
 
     kwargs = {
         "title": "Valid Title",
@@ -168,7 +197,6 @@ def test_delete_removes_concept(title, type_val, content, pbt_config):
     returns the concept_id and the concept file no longer exists.
     """
     from mcp.server.fastmcp.exceptions import ToolError
-    from okf_tools.server import commit_concept, delete_concept, show_concept
 
     # Create a concept
     result = commit_concept(title=title, type=type_val, content=content)
@@ -208,7 +236,6 @@ def test_update_applies_only_provided_fields(new_title, new_content, update_fiel
     For any existing concept and any non-empty subset of update fields,
     only the specified fields change; all others remain at prior values.
     """
-    from okf_tools.server import commit_concept, update_concept, show_concept
 
     # Create a concept with known values
     result = commit_concept(title="Original Title", type="pattern", content="Original content")
@@ -300,7 +327,6 @@ def test_invalid_updates_rejected_without_modification(invalid_type, pbt_config)
     a validation error is returned and the concept remains unchanged.
     """
     from mcp.server.fastmcp.exceptions import ToolError
-    from okf_tools.server import commit_concept, update_concept, show_concept
 
     # Create a concept
     result = commit_concept(title="Test Concept", type="pattern", content="Test content")
@@ -341,7 +367,6 @@ def test_whitespace_only_queries_rejected(whitespace_query, pbt_config):
     invoking fetch_concepts raises a validation error.
     """
     from mcp.server.fastmcp.exceptions import ToolError
-    from okf_tools.server import fetch_concepts
     
     with pytest.raises(ToolError) as exc_info:
         fetch_concepts(query=whitespace_query)
@@ -367,7 +392,6 @@ def test_list_results_sorted_and_complete(num_concepts, type_val, pbt_config):
     For any bundle with concepts, list_concepts returns results
     sorted by concept_id with each entry containing concept_id, title, type, tags.
     """
-    from okf_tools.server import commit_concept, list_concepts
     
     # Create multiple concepts
     for i in range(num_concepts):
@@ -406,7 +430,6 @@ def test_validation_error_maps_all_messages(error_messages, pbt_config):
     
     **Validates: Requirements 11.1**
     """
-    from okf_tools.server import _handle_error
     from okf_tools.errors import ValidationError
     
     err = ValidationError(error_messages)
@@ -428,7 +451,6 @@ def test_concept_not_found_maps_id(concept_id, pbt_config):
     
     **Validates: Requirements 11.2**
     """
-    from okf_tools.server import _handle_error
     from okf_tools.errors import ConceptNotFoundError
     
     err = ConceptNotFoundError(concept_id)
@@ -460,7 +482,6 @@ def test_unexpected_errors_hide_internal_details(error_msg, file_path, pbt_confi
     Python traceback text, absolute file paths, or class names.
     """
     from mcp.server.fastmcp.exceptions import ToolError
-    from okf_tools.server import get_stats
     
     # Mock service.get_stats to raise an unexpected exception
     class CustomInternalError(Exception):
@@ -507,7 +528,6 @@ def test_stats_response_has_correct_structure(concept_count, num_types, num_tags
     tag_distribution (dict with int values), last_reindex_timestamp (str or null),
     and pending_reembedding_count (int >= 0).
     """
-    from okf_tools.server import get_stats
     
     # Build mock stats
     type_dist = {f"type_{i}": i + 1 for i in range(num_types)}
@@ -552,11 +572,6 @@ def test_non_init_tools_require_configured_bundle(tool_idx, pbt_config):
     is configured returns an error indicating no bundle is configured.
     """
     from mcp.server.fastmcp.exceptions import ToolError
-    from okf_tools.server import (
-        commit_concept, update_concept, delete_concept,
-        fetch_concepts, list_concepts, show_concept, reindex, get_stats,
-    )
-    
     tools_and_kwargs = [
         (commit_concept, {"title": "T", "type": "p", "content": "c"}),
         (update_concept, {"concept_id": "test", "title": "New"}),
@@ -570,7 +585,7 @@ def test_non_init_tools_require_configured_bundle(tool_idx, pbt_config):
     
     tool_fn, kwargs = tools_and_kwargs[tool_idx]
     
-    with patch("okf_tools.server._config", None):
+    with patch.object(server_state, "config", None):
         with pytest.raises(ToolError) as exc_info:
             tool_fn(**kwargs)
         assert "no bundle configured" in str(exc_info.value).lower()
