@@ -466,7 +466,7 @@ def test_concept_not_found_maps_id(concept_id, pbt_config):
 
 
 @given(
-    error_msg=st.text(min_size=1, max_size=100).filter(lambda s: s.strip()),
+    error_msg=st.text(min_size=8, max_size=100).filter(lambda s: s.strip() and s.lower() not in "an internal error occurred"),
     file_path=st.text(
         alphabet=st.characters(whitelist_categories=("L", "N", "P")),
         min_size=5, max_size=50
