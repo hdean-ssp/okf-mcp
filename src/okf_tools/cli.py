@@ -101,7 +101,7 @@ def _handle_error(ctx: click.Context, message: str, exit_code: int = 1) -> None:
 )
 @click.pass_context
 def okf(ctx: click.Context, fmt: Optional[str]) -> None:
-    """OKF bundle tools — search, author, and navigate knowledge."""
+    """OKF bundle tools - search, author, and navigate knowledge."""
     ctx.ensure_object(dict)
     ctx.obj["format"] = _detect_format(fmt)
 
