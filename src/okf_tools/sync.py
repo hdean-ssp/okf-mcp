@@ -13,6 +13,10 @@ from .config import OkfConfig
 from .errors import ParseError
 from .search import VectorIndex, embed_batch
 
+# Maximum number of texts to embed in a single batch. Keeps memory usage
+# bounded on servers with limited RAM (e.g. 2GB VPS).
+EMBED_BATCH_SIZE = 20
+
 
 @dataclass
 class ChangeSet:
@@ -98,7 +102,7 @@ def incremental_reindex(
         if concepts:
             texts = [c.body for c in concepts]
             try:
-                embeddings = embed_batch(texts, config.embedding_model)
+                embeddings = _embed_chunked(texts, config.embedding_model)
             except Exception:
                 summary.skipped.extend(c.concept_id for c in concepts)
                 concepts = []
@@ -149,7 +153,7 @@ def full_reindex(
     if concepts:
         texts = [c.body for c in concepts]
         try:
-            embeddings = embed_batch(texts, config.embedding_model)
+            embeddings = _embed_chunked(texts, config.embedding_model)
         except Exception:
             summary.skipped = [c.concept_id for c in concepts]
             index.set_sync_timestamp(time.time())
@@ -172,3 +176,16 @@ def full_reindex(
     summary.total_indexed = index.concept_count()
 
     return summary
+
+
+def _embed_chunked(texts: List[str], model_name: str) -> list:
+    """Embed texts in chunks of EMBED_BATCH_SIZE to bound memory usage.
+
+    Returns a flat list of embeddings in the same order as the input texts.
+    Raises on first failure (caller handles the exception).
+    """
+    all_embeddings: list = []
+    for i in range(0, len(texts), EMBED_BATCH_SIZE):
+        chunk = texts[i : i + EMBED_BATCH_SIZE]
+        all_embeddings.extend(embed_batch(chunk, model_name))
+    return all_embeddings

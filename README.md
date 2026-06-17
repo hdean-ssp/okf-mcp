@@ -117,7 +117,11 @@ Create `~/.kiro/settings/mcp.json` on the server:
   "mcpServers": {
     "okf-mcp": {
       "command": "/path/to/okf-mcp/.venv/bin/okf-mcp",
-      "args": ["--bundle-path", "/path/to/your/bundle"]
+      "args": ["--bundle-path", "/path/to/your/bundle"],
+      "autoApprove": [
+        "fetch_concepts", "list_concepts", "show_concept",
+        "get_stats", "reindex"
+      ]
     }
   }
 }
@@ -130,7 +134,11 @@ Create `~/.kiro/settings/mcp.json` on the server:
   "mcpServers": {
     "okf-mcp": {
       "command": "okf-mcp",
-      "args": ["--bundle-path", "/path/to/your/bundle"]
+      "args": ["--bundle-path", "/path/to/your/bundle"],
+      "autoApprove": [
+        "fetch_concepts", "list_concepts", "show_concept",
+        "get_stats", "reindex"
+      ]
     }
   }
 }

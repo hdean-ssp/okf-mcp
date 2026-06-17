@@ -81,6 +81,56 @@ Create or edit `.kiro/settings/mcp.json` **on the server** (Kiro reads this via 
 
 Replace paths with your actual locations.
 
+### Auto-Approve (Recommended)
+
+By default, Kiro prompts for approval on every MCP tool call. You can auto-approve non-destructive (read-only) tools so searches and lookups don't interrupt your flow, while keeping approval required for write operations:
+
+```json
+{
+  "mcpServers": {
+    "okf-mcp": {
+      "command": "/path/to/okf-mcp/.venv/bin/okf-mcp",
+      "args": [
+        "--bundle-path",
+        "/path/to/your/bundle"
+      ],
+      "autoApprove": [
+        "fetch_concepts",
+        "list_concepts",
+        "show_concept",
+        "get_stats",
+        "reindex"
+      ]
+    }
+  }
+}
+```
+
+**Auto-approved (read-only):**
+- `fetch_concepts` — search queries
+- `list_concepts` — browse/filter
+- `show_concept` — view full content
+- `get_stats` — bundle health check
+- `reindex` — rebuild search index (reads files, writes only to the sidecar index)
+
+**Requires approval (write operations):**
+- `commit_concept` — creates files
+- `update_concept` — modifies files
+- `move_concept` — renames/relocates files
+- `delete_concept` — removes files
+- `init_bundle` — creates bundle structure
+
+If you trust the agent fully (e.g. personal bundle, automated workflows), you can auto-approve everything:
+
+```json
+"autoApprove": [
+  "fetch_concepts", "list_concepts", "show_concept",
+  "get_stats", "reindex", "commit_concept",
+  "update_concept", "move_concept", "delete_concept",
+  "init_bundle"
+]
+```
+
 This can live at:
 - `~/.kiro/settings/mcp.json` (user-level, applies to all workspaces)
 - `<workspace>/.kiro/settings/mcp.json` (workspace-level, applies to that project only)
