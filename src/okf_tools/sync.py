@@ -15,7 +15,7 @@ from .search import VectorIndex, embed_batch
 
 # Maximum number of texts to embed in a single batch. Keeps memory usage
 # bounded on servers with limited RAM (e.g. 2GB VPS).
-EMBED_BATCH_SIZE = 20
+EMBED_BATCH_SIZE = 5
 
 
 @dataclass
