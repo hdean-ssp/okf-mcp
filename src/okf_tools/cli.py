@@ -96,7 +96,7 @@ def _handle_error(ctx: click.Context, message: str, exit_code: int = 1) -> None:
 )
 @click.version_option(
     version=__version__,
-    prog_name="okf-tools",
+    prog_name="okf-mcp",
     message="%(prog)s %(version)s (targeting OKF spec v" + OKF_SPEC_VERSION + ")",
 )
 @click.pass_context

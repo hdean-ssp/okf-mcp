@@ -1,4 +1,4 @@
-"""okf-tools: A companion CLI and library for working with OKF bundles."""
+"""okf-mcp: MCP server and CLI for working with OKF knowledge bundles."""
 
 __version__ = "0.1.0"
 

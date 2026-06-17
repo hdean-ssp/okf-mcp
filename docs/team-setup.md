@@ -1,29 +1,29 @@
 # Team Setup Guide
 
-Get okf-tools working with your Kiro IDE in under 5 minutes. No installation required — the shared deployment handles everything.
+Get okf-mcp working with your Kiro IDE in under 5 minutes. No installation required — the shared deployment handles everything.
 
 ## Prerequisites
 
-- Kiro installed on your Windows machine
-- SSH access to 10.81.2.23 (ask your team lead if you don't have this)
+- Kiro installed on your machine
+- SSH access to the team server
 - Kiro connected to the server via Remote-SSH
 
 ## Setup (One-Time)
 
 ### Step 1: Create the MCP config
 
-On the Linux server, create the file `~/.kiro/settings/mcp.json`:
+On the server, create the file `~/.kiro/settings/mcp.json`:
 
 ```bash
 mkdir -p ~/.kiro/settings
 cat > ~/.kiro/settings/mcp.json << 'EOF'
 {
   "mcpServers": {
-    "okf-tools": {
-      "command": "/home/electra/trunk/m3/castle_sdx/etc/okf-tools/.venv/bin/okf-mcp",
+    "okf-mcp": {
+      "command": "/path/to/okf-mcp/.venv/bin/okf-mcp",
       "args": [
         "--bundle-path",
-        "/home/electra/trunk/m3/castle_sdx/etc/team-okf"
+        "/path/to/team-bundle"
       ],
       "autoApprove": [
         "commit_concept",
@@ -42,43 +42,15 @@ cat > ~/.kiro/settings/mcp.json << 'EOF'
 EOF
 ```
 
-Or using `$BRODIR`:
-
-```bash
-mkdir -p ~/.kiro/settings
-cat > ~/.kiro/settings/mcp.json << EOF
-{
-  "mcpServers": {
-    "okf-tools": {
-      "command": "$BRODIR/etc/okf-tools/.venv/bin/okf-mcp",
-      "args": [
-        "--bundle-path",
-        "$BRODIR/etc/team-okf"
-      ],
-      "autoApprove": [
-        "commit_concept",
-        "delete_concept",
-        "fetch_concepts",
-        "get_stats",
-        "init_bundle",
-        "list_concepts",
-        "reindex",
-        "show_concept",
-        "update_concept"
-      ]
-    }
-  }
-}
-EOF
-```
+Replace paths with the actual locations provided by your team lead.
 
 ### Step 2: Connect Kiro
 
-1. Open Kiro on Windows
-2. Connect to the server via Remote-SSH (host: 10.81.2.23)
+1. Open Kiro
+2. Connect to the server via Remote-SSH
 3. Open any workspace
 
-Kiro will automatically detect the MCP config and connect to the okf-tools server.
+Kiro will automatically detect the MCP config and connect to the okf-mcp server.
 
 ### Step 3: Verify
 
@@ -96,7 +68,7 @@ You should see results from the team knowledge base.
 
 ```
 ┌──────────────────────────────────┐
-│  Windows Desktop                 │
+│  Your Desktop                    │
 │  ┌────────────────────────────┐  │
 │  │  Kiro (Remote-SSH)         │  │
 │  └────────────┬───────────────┘  │
@@ -104,15 +76,15 @@ You should see results from the team knowledge base.
                 │ SSH
                 ▼
 ┌──────────────────────────────────────────────────┐
-│  Linux Server (10.81.2.23)                       │
+│  Linux Server                                    │
 │                                                  │
 │  ~/.kiro/settings/mcp.json                       │
 │    → tells Kiro to spawn okf-mcp                 │
 │                                                  │
-│  $BRODIR/etc/okf-tools/.venv/bin/okf-mcp         │
+│  /path/to/okf-mcp/.venv/bin/okf-mcp             │
 │    → MCP server process (started by Kiro)        │
 │                                                  │
-│  $BRODIR/etc/team-okf/                           │
+│  /path/to/team-bundle/                           │
 │    → shared knowledge bundle (markdown + index)  │
 └──────────────────────────────────────────────────┘
 ```
@@ -120,7 +92,7 @@ You should see results from the team knowledge base.
 - Kiro runs on the server via Remote-SSH
 - It reads your `~/.kiro/settings/mcp.json` and spawns `okf-mcp` directly
 - No SSH wrapper in the MCP config — Kiro is already on the server
-- No `pip install` needed — the shared venv at `$BRODIR/etc/okf-tools/` is pre-built
+- No `pip install` needed — the shared venv is pre-built
 
 ## Important Notes
 
@@ -150,12 +122,12 @@ Your agent now has these tools available via the MCP connection:
 ### MCP not connecting
 
 1. Check the config file exists: `cat ~/.kiro/settings/mcp.json`
-2. Test the server manually: `/home/electra/trunk/m3/castle_sdx/etc/okf-tools/.venv/bin/okf-mcp --bundle-path /home/electra/trunk/m3/castle_sdx/etc/team-okf` (should hang silently — Ctrl+C to exit)
+2. Test the server manually: run the `command` from your config with the `args` (should hang silently — Ctrl+C to exit)
 3. Reconnect MCP from Kiro's command palette
 
 ### "No bundle configured" error
 
-The bundle path in your config doesn't exist. Verify: `ls /home/electra/trunk/m3/castle_sdx/etc/team-okf/.okf/config.json`
+The bundle path in your config doesn't exist. Verify the path exists and contains `.okf/config.json`.
 
 ### Tools not appearing
 

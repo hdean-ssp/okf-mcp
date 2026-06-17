@@ -9,7 +9,7 @@ description = "MCP server for OKF knowledge bundles — semantic search and auth
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.9"
-authors = [{ name = "okf-tools contributors" }]
+authors = [{ name = "okf-mcp contributors" }]
 keywords = ["okf", "mcp", "knowledge", "semantic-search", "model-context-protocol"]
 classifiers = [
     "Development Status :: 3 - Alpha",

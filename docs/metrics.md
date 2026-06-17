@@ -1,6 +1,6 @@
 # Metrics & Impact Measurement
 
-A lightweight framework for capturing before/after measurements when using okf-tools in developer workflows.
+A lightweight framework for capturing before/after measurements when using okf-mcp in developer workflows.
 
 ## Purpose
 
@@ -22,7 +22,7 @@ This document provides the capture template and reporting structure. It does **n
 **How to capture:**
 - Record the start time when the developer begins investigating
 - Record the end time when they can articulate the module's purpose and key interactions
-- Note whether okf-tools was used during the investigation
+- Note whether okf-mcp was used during the investigation
 
 **Capture template:**
 
@@ -70,7 +70,7 @@ notes: "<optional context>"
 **How to capture:**
 - Record start date (first day on the team/project)
 - Record the date of first merged PR that touches non-trivial logic
-- Note whether okf-tools was available during onboarding
+- Note whether okf-mcp was available during onboarding
 
 **Capture template:**
 
@@ -203,7 +203,7 @@ observations:
 
 ---
 
-## Integration with okf-tools (Future)
+## Integration with okf-mcp (Future)
 
 Tasks for potential future implementation (tracked in TASKS.md):
 

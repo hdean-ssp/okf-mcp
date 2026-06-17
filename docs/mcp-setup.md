@@ -4,7 +4,7 @@
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  Your Windows Desktop                           │
+│  Your Desktop                                   │
 │  ┌───────────────────────────────────────────┐  │
 │  │  Kiro (Remote-SSH to server)              │  │
 │  │  ─ reads .kiro/settings/mcp.json          │  │
@@ -14,10 +14,10 @@
                       │ SSH
                       ▼
 ┌─────────────────────────────────────────────────┐
-│  Ubuntu Server (10.81.2.23)                     │
+│  Linux Server                                   │
 │                                                 │
-│  /home/hdean/personal/okf-tools/                │
-│    .venv/bin/okf-mcp  ← MCP server binary      │
+│  /path/to/okf-mcp/                              │
+│    .venv/bin/okf-mcp  ← MCP server binary       │
 │                                                 │
 │  /path/to/your/bundle/                          │
 │    .okf/config.json   ← OKF bundle             │
@@ -36,11 +36,9 @@ Since Kiro is connected via Remote-SSH, it runs commands **on the server** direc
 ## Server Installation
 
 ```bash
-# Clone okf-tools
-cd ~/personal  # or wherever you keep tools
-git clone https://github.com/hdean-ssp/okf-tools.git
-cd okf-tools
-git checkout mcp
+# Clone okf-mcp
+git clone https://github.com/hdean-ssp/okf-mcp.git
+cd okf-mcp
 
 # Create venv with Python 3.12 (or 3.10+)
 python3.12 -m venv .venv
@@ -70,8 +68,8 @@ Create or edit `.kiro/settings/mcp.json` **on the server** (Kiro reads this via 
 ```json
 {
   "mcpServers": {
-    "okf-tools": {
-      "command": "/home/hdean/personal/okf-tools/.venv/bin/okf-mcp",
+    "okf-mcp": {
+      "command": "/path/to/okf-mcp/.venv/bin/okf-mcp",
       "args": [
         "--bundle-path",
         "/path/to/your/bundle"
@@ -81,7 +79,7 @@ Create or edit `.kiro/settings/mcp.json` **on the server** (Kiro reads this via 
 }
 ```
 
-Replace `/path/to/your/bundle` with your actual bundle location.
+Replace paths with your actual locations.
 
 This can live at:
 - `~/.kiro/settings/mcp.json` (user-level, applies to all workspaces)
@@ -122,7 +120,7 @@ The server starts but doesn't respond. Common causes:
 Run the exact command from your config in a terminal on the server:
 
 ```bash
-/home/hdean/personal/okf-tools/.venv/bin/okf-mcp --bundle-path /path/to/your/bundle
+/path/to/okf-mcp/.venv/bin/okf-mcp --bundle-path /path/to/your/bundle
 ```
 
 It should sit silently waiting for input. If it prints an error, that's the problem. Ctrl+C to exit.
@@ -132,7 +130,7 @@ It should sit silently waiting for input. If it prints an error, that's the prob
 The `okf-mcp` binary isn't executable or the venv is broken. Rebuild:
 
 ```bash
-cd ~/personal/okf-tools
+cd /path/to/okf-mcp
 rm -rf .venv
 python3.12 -m venv .venv
 source .venv/bin/activate

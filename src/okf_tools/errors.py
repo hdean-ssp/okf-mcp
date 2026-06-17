@@ -1,8 +1,8 @@
-"""Error hierarchy for okf-tools."""
+"""Error hierarchy for okf-mcp."""
 
 
 class OkfError(Exception):
-    """Base error for all okf-tools operations."""
+    """Base error for all okf-mcp operations."""
 
 
 class ConceptNotFoundError(OkfError):

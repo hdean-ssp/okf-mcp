@@ -1,6 +1,6 @@
 # Developer Use Cases
 
-Concrete examples of how okf-tools helps developers working with OKF knowledge bundles.
+Concrete examples of how okf-mcp helps developers working with OKF knowledge bundles.
 
 ---
 
@@ -109,7 +109,7 @@ snippet: Stripe webhook retries were processed as new events. Added idempotency 
 
 **Scenario:** An AI agent is about to refactor error handling across a service. Before making changes, it queries the bundle for context.
 
-> *Agent guidance files* (in the `agent/` directory) instruct the agent on how to use okf-tools — what commands to run and when. These are IDE-agnostic and can be adapted to Kiro, Cursor, Windsurf, or any tool that supports agent configuration.
+> *Agent guidance files* (in the `agent/` directory) instruct the agent on how to use okf-mcp — what commands to run and when. These are IDE-agnostic and can be adapted to Kiro, Cursor, Windsurf, or any tool that supports agent configuration.
 
 **Agent workflow:**
 

@@ -1,17 +1,17 @@
-# okf-tools
+# okf-mcp
 
 Local semantic search over [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) knowledge bundles. No API keys, no cloud services.
 
-**Why it exists:** Engineers waste hours rediscovering knowledge that already exists — scattered across wikis, Slack, git history, and colleagues' heads. OKF defines a vendor-neutral format (published by Google Cloud Platform) for persisting that knowledge as markdown; okf-tools makes it queryable and useful in practice. OKF defines the format; okf-tools provides the tooling layer.
+**Why it exists:** Engineers waste hours rediscovering knowledge that already exists — scattered across wikis, Slack, git history, and colleagues' heads. OKF defines a vendor-neutral format (published by Google Cloud Platform) for persisting that knowledge as markdown; okf-mcp makes it queryable and useful in practice. OKF defines the format; okf-mcp provides the tooling layer.
 
-Write markdown files with YAML frontmatter → okf-tools makes them queryable via hybrid search (BM25 keyword + vector cosine similarity).
+Write markdown files with YAML frontmatter → okf-mcp makes them queryable via hybrid search (BM25 keyword + vector cosine similarity).
 
 ## Quick Start
 
 ```bash
 # Install (requires Python 3.9+)
-git clone https://github.com/hdean-ssp/okf-tools.git
-cd okf-tools
+git clone https://github.com/hdean-ssp/okf-mcp.git
+cd okf-mcp
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 
@@ -71,7 +71,7 @@ All commands support `--format json|text|brief`. Output is JSON when piped (agen
 
 ## MCP Server
 
-okf-tools includes an MCP (Model Context Protocol) server, letting any MCP-compatible client (Kiro, Claude Desktop, etc.) use your knowledge bundle directly.
+okf-mcp includes an MCP (Model Context Protocol) server, letting any MCP-compatible client (Kiro, Claude Desktop, etc.) use your knowledge bundle directly.
 
 ### Quick Start — MCP Server
 
@@ -94,11 +94,11 @@ Create `~/.kiro/settings/mcp.json` on the server:
 ```json
 {
   "mcpServers": {
-    "okf-tools": {
-      "command": "/home/electra/trunk/m3/castle_sdx/etc/okf-tools/.venv/bin/okf-mcp",
+    "okf-mcp": {
+      "command": "/path/to/okf-mcp/.venv/bin/okf-mcp",
       "args": [
         "--bundle-path",
-        "/home/electra/trunk/m3/castle_sdx/etc/team-okf"
+        "/path/to/your/team-bundle"
       ],
       "autoApprove": [
         "commit_concept", "delete_concept", "fetch_concepts",
@@ -115,8 +115,8 @@ Create `~/.kiro/settings/mcp.json` on the server:
 ```json
 {
   "mcpServers": {
-    "okf-tools": {
-      "command": "/path/to/okf-tools/.venv/bin/okf-mcp",
+    "okf-mcp": {
+      "command": "/path/to/okf-mcp/.venv/bin/okf-mcp",
       "args": ["--bundle-path", "/path/to/your/bundle"]
     }
   }
@@ -128,7 +128,7 @@ Create `~/.kiro/settings/mcp.json` on the server:
 ```json
 {
   "mcpServers": {
-    "okf-tools": {
+    "okf-mcp": {
       "command": "okf-mcp",
       "args": ["--bundle-path", "/path/to/your/bundle"]
     }
@@ -176,13 +176,12 @@ Agents access the knowledge bundle through MCP tools (`fetch_concepts`, `commit_
 - [Use Cases & Examples](docs/use-cases.md)
 - [Metrics & Impact Measurement](docs/metrics.md)
 - [Validation Checklist](docs/validation-checklist.md)
-- [Proof Point Summary](PROOF_POINT.md)
 
 ## Development
 
 ```bash
-git clone https://github.com/hdean-ssp/okf-tools.git
-cd okf-tools
+git clone https://github.com/hdean-ssp/okf-mcp.git
+cd okf-mcp
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
@@ -193,9 +192,7 @@ Dev dependencies include `pytest`, `hypothesis` (property-based testing), and `p
 
 ## Branches
 
-- **`main`** — core CLI tool. Focused on the essential loop: init → commit → fetch → reindex.
-- **`mcp`** — adds the MCP server (`okf-mcp`) for use with Kiro, Claude Desktop, and other MCP clients.
-- **`ssp-full`** — extended version with multi-bundle support, link graph traversal, compliance linting, skills system, and Kiro-specific install script.
+- **`main`** — MCP server and CLI. Focused on the essential loop: init → commit → fetch → reindex, exposed via both CLI and MCP.
 
 ## License
 

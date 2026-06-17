@@ -1,6 +1,6 @@
 # OKF Knowledge Tools — Agent Guide
 
-You have access to okf-tools via MCP — a set of tools for managing OKF knowledge bundles. Bundles store learnings, patterns, decisions, and context as markdown files with semantic search.
+You have access to okf-mcp via MCP — a set of tools for managing OKF knowledge bundles. Bundles store learnings, patterns, decisions, and context as markdown files with semantic search.
 
 ## When to Use
 

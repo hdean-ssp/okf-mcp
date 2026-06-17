@@ -1,6 +1,6 @@
 # Usability Validation Checklist
 
-A lightweight checklist to confirm another engineer can use okf-tools without prior project context.
+A lightweight checklist to confirm another engineer can use okf-mcp without prior project context.
 
 ## Prerequisites
 
@@ -10,15 +10,15 @@ A lightweight checklist to confirm another engineer can use okf-tools without pr
 
 ## Validation Steps
 
-Have an engineer who has **not** used okf-tools before work through the following. Record pass/fail and time taken.
+Have an engineer who has **not** used okf-mcp before work through the following. Record pass/fail and time taken.
 
 ---
 
 ### 1. Install (target: < 5 minutes)
 
 ```bash
-git clone https://github.com/hdean-ssp/okf-tools.git
-cd okf-tools
+git clone https://github.com/hdean-ssp/okf-mcp.git
+cd okf-mcp
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -169,4 +169,4 @@ okf list
 - If any of steps 1-5 fail, the tool has a blocking usability issue.
 - Steps 6-8 validate comprehension and discoverability.
 - Time targets are loose guides, not hard requirements. The point is to identify friction, not enforce speed.
-- Run this on a machine that has NOT been used for okf-tools development (no cached models, no pre-existing config).
+- Run this on a machine that has NOT been used for okf-mcp development (no cached models, no pre-existing config).

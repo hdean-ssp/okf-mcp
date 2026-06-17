@@ -1,4 +1,4 @@
-"""MCP server exposing okf-tools service functions as MCP tools.
+"""MCP server exposing okf-mcp service functions as MCP tools.
 
 All diagnostic output goes to stderr (never stdout — that's the JSON-RPC channel).
 """
@@ -24,7 +24,7 @@ from .errors import (
     ValidationError,
 )
 
-mcp = FastMCP("okf-tools")
+mcp = FastMCP("okf-mcp")
 
 _config: Optional[OkfConfig] = None
 

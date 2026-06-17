@@ -1,10 +1,10 @@
-# Contributing to okf-tools
+# Contributing to okf-mcp
 
 ## Development Setup
 
 ```bash
-git clone <repo-url>
-cd okf-tools
+git clone https://github.com/hdean-ssp/okf-mcp.git
+cd okf-mcp
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"

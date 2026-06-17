@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for okf-tools tests."""
+"""Shared pytest fixtures for okf-mcp tests."""
 
 from __future__ import annotations
 
