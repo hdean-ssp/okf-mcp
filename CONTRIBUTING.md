@@ -5,9 +5,8 @@
 ```bash
 git clone https://github.com/hdean-ssp/okf-mcp.git
 cd okf-mcp
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+source activate.sh        # detects best Python, creates venv, installs
+pip install -e ".[dev]"   # adds pytest, hypothesis, pytest-asyncio
 ```
 
 ## Running Tests

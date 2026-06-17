@@ -12,8 +12,7 @@ Write markdown files with YAML frontmatter → okf-mcp makes them queryable via 
 # Install (requires Python 3.10+)
 git clone https://github.com/hdean-ssp/okf-mcp.git
 cd okf-mcp
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
+source activate.sh
 
 # Create a bundle
 mkdir ~/my-knowledge && cd ~/my-knowledge
@@ -182,8 +181,7 @@ Agents access the knowledge bundle through MCP tools (`fetch_concepts`, `commit_
 ```bash
 git clone https://github.com/hdean-ssp/okf-mcp.git
 cd okf-mcp
-python3 -m venv .venv
-source .venv/bin/activate
+source activate.sh
 pip install -e ".[dev]"
 pytest
 ```

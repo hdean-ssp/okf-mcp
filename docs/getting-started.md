@@ -5,9 +5,7 @@
 ```bash
 git clone https://github.com/hdean-ssp/okf-mcp.git
 cd okf-mcp
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+source activate.sh
 ```
 
 ## Initialise a Bundle

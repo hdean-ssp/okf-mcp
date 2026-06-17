@@ -19,9 +19,7 @@ Have an engineer who has **not** used okf-mcp before work through the following.
 ```bash
 git clone https://github.com/hdean-ssp/okf-mcp.git
 cd okf-mcp
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+source activate.sh
 ```
 
 **Pass criteria:** `okf --version` prints version info without errors.
