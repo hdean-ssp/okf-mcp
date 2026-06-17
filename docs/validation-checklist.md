@@ -4,7 +4,7 @@ A lightweight checklist to confirm another engineer can use okf-mcp without prio
 
 ## Prerequisites
 
-- Python 3.9+
+- Python 3.10+
 - bash shell
 - ~100MB free disk space (for venv + embedding model on first run)
 

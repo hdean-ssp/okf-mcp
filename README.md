@@ -9,7 +9,7 @@ Write markdown files with YAML frontmatter → okf-mcp makes them queryable via 
 ## Quick Start
 
 ```bash
-# Install (requires Python 3.9+)
+# Install (requires Python 3.10+)
 git clone https://github.com/hdean-ssp/okf-mcp.git
 cd okf-mcp
 python3 -m venv .venv && source .venv/bin/activate

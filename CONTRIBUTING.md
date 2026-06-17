@@ -22,7 +22,7 @@ The first run of tests that touch semantic search will download the embedding mo
 
 ## Code Style
 
-- Python 3.9 compatible — no `match` statements, use `from __future__ import annotations`
+- Python 3.10 compatible — use `from __future__ import annotations` for cleaner type hints
 - Type hints on all public functions
 - Docstrings on all public functions and classes
 - Keep modules focused — one responsibility per file
@@ -32,15 +32,14 @@ The first run of tests that touch semantic search will download the embedding mo
 
 ```
 src/okf_tools/
+├── __init__.py     # Package metadata and version constants
 ├── cli.py          # Click commands (thin — delegates to service)
 ├── service.py      # Workflow orchestration
 ├── bundle.py       # File parsing, writing, validation
 ├── search.py       # Hybrid search: vector (sqlite-vec) + BM25 (FTS5) + fastembed
-├── graph.py        # Link graph (adjacency + BFS)
 ├── sync.py         # Incremental reindexing
-├── validation.py   # Bundle-wide lint checks
 ├── config.py       # Configuration loading
-├── skills.py       # Skill pack discovery
+├── server.py       # MCP server (exposes service functions as MCP tools)
 └── errors.py       # Error hierarchy
 ```
 
@@ -53,6 +52,5 @@ The spec we target is vendored at `spec/OKF_SPEC_v0.1.md`. The version constant 
 1. Branch from `main`
 2. Keep PRs focused — one logical change per PR
 3. Add tests for new functionality
-4. Run `okf lint` on any test bundles you create
-5. All tests must pass before merge
-6. Update docs if you change CLI behaviour
+4. All tests must pass before merge
+5. Update docs if you change CLI behaviour

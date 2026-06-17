@@ -8,14 +8,13 @@ version = "0.1.0"
 description = "MCP server for OKF knowledge bundles — semantic search and authoring via Model Context Protocol"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [{ name = "okf-mcp contributors" }]
 keywords = ["okf", "mcp", "knowledge", "semantic-search", "model-context-protocol"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -25,6 +24,7 @@ dependencies = [
     "click>=8.0,<9.0",
     "fastembed>=0.3.0,<1.0",
     "mcp>=1.0,<2.0",
+    "numpy>=1.24",
     "sqlite-vec>=0.1.0,<1.0",
     "python-frontmatter>=1.0,<1.1",
     "pyyaml>=6.0",
