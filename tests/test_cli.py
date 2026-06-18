@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import click
-import pytest
 from click.testing import CliRunner
 
 from okf_tools.cli import (
@@ -19,7 +17,6 @@ from okf_tools.cli import (
     _print_dict,
     okf,
 )
-
 
 # ---------------------------------------------------------------------------
 # _detect_format
@@ -285,63 +282,59 @@ class TestOutput:
 
     def test_json_format_dict(self):
         ctx = self._make_ctx("json")
-        with ctx.scope():
-            with patch("click.echo") as mock_echo:
-                _output(ctx, {"key": "value"})
-                output = mock_echo.call_args[0][0]
-                data = json.loads(output)
-                assert data == {"key": "value"}
+        with ctx.scope(), patch("click.echo") as mock_echo:
+            _output(ctx, {"key": "value"})
+            output = mock_echo.call_args[0][0]
+            data = json.loads(output)
+            assert data == {"key": "value"}
 
     def test_json_format_list(self):
         ctx = self._make_ctx("json")
-        with ctx.scope():
-            with patch("click.echo") as mock_echo:
-                _output(ctx, [{"a": 1}, {"b": 2}])
-                output = mock_echo.call_args[0][0]
-                data = json.loads(output)
-                assert data == [{"a": 1}, {"b": 2}]
+        with ctx.scope(), patch("click.echo") as mock_echo:
+            _output(ctx, [{"a": 1}, {"b": 2}])
+            output = mock_echo.call_args[0][0]
+            data = json.loads(output)
+            assert data == [{"a": 1}, {"b": 2}]
 
     def test_brief_format_list(self):
         ctx = self._make_ctx("brief")
-        with ctx.scope():
-            with patch("click.echo") as mock_echo:
-                _output(ctx, [
+        with ctx.scope(), patch("click.echo") as mock_echo:
+            _output(
+                ctx,
+                [
                     {"concept_id": "patterns/retry", "title": "Retry Pattern"},
                     {"concept_id": "decisions/cache", "title": "Cache Decision"},
-                ])
-                calls = [c[0][0] for c in mock_echo.call_args_list]
-                assert "patterns/retry\tRetry Pattern" in calls
-                assert "decisions/cache\tCache Decision" in calls
+                ],
+            )
+            calls = [c[0][0] for c in mock_echo.call_args_list]
+            assert "patterns/retry\tRetry Pattern" in calls
+            assert "decisions/cache\tCache Decision" in calls
 
     def test_brief_format_empty_list(self):
         ctx = self._make_ctx("brief")
-        with ctx.scope():
-            with patch("click.echo") as mock_echo:
-                _output(ctx, [])
-                mock_echo.assert_called_once_with("No matching concepts.", err=True)
+        with ctx.scope(), patch("click.echo") as mock_echo:
+            _output(ctx, [])
+            mock_echo.assert_called_once_with("No matching concepts.", err=True)
 
     def test_text_format_dict(self):
         ctx = self._make_ctx("text")
-        with ctx.scope():
-            with patch("click.echo") as mock_echo:
-                _output(ctx, {"concept_id": "test", "title": "Test"})
-                calls = [c[0][0] for c in mock_echo.call_args_list]
-                assert "concept_id: test" in calls
-                assert "title: Test" in calls
+        with ctx.scope(), patch("click.echo") as mock_echo:
+            _output(ctx, {"concept_id": "test", "title": "Test"})
+            calls = [c[0][0] for c in mock_echo.call_args_list]
+            assert "concept_id: test" in calls
+            assert "title: Test" in calls
 
     def test_text_format_empty_list(self):
         ctx = self._make_ctx("text")
-        with ctx.scope():
-            with patch("click.echo") as mock_echo:
-                _output(ctx, [])
-                mock_echo.assert_called_once_with("No matching concepts.", err=True)
+        with ctx.scope(), patch("click.echo") as mock_echo:
+            _output(ctx, [])
+            mock_echo.assert_called_once_with("No matching concepts.", err=True)
 
     def test_text_format_scalar(self):
         ctx = self._make_ctx("text")
-        with ctx.scope():
-            with patch("click.echo") as mock_echo:
-                _output(ctx, "plain string")
-                mock_echo.assert_called_once_with("plain string")
+        with ctx.scope(), patch("click.echo") as mock_echo:
+            _output(ctx, "plain string")
+            mock_echo.assert_called_once_with("plain string")
 
 
 # ---------------------------------------------------------------------------
@@ -463,11 +456,13 @@ class TestCLIIntegration:
         mock_idx.close.return_value = None
         mock_idx.upsert.return_value = None
 
-        input_json = json.dumps({
-            "title": "CLI Test",
-            "type": "Pattern",
-            "content": "CLI body content",
-        })
+        input_json = json.dumps(
+            {
+                "title": "CLI Test",
+                "type": "Pattern",
+                "content": "CLI body content",
+            }
+        )
         result = runner.invoke(okf, ["commit", "--json", input_json])
         assert result.exit_code == 0
         assert "concept_id" in result.output
@@ -480,11 +475,13 @@ class TestCLIIntegration:
         runner = CliRunner()
         runner.invoke(okf, ["init"])
 
-        input_json = json.dumps({
-            "title": "Dry Run Test",
-            "type": "Pattern",
-            "content": "Should not be written",
-        })
+        input_json = json.dumps(
+            {
+                "title": "Dry Run Test",
+                "type": "Pattern",
+                "content": "Should not be written",
+            }
+        )
         result = runner.invoke(okf, ["commit", "--json", input_json, "--dry-run"])
         assert result.exit_code == 0
         assert "dry_run" in result.output.lower() or "Dry Run Test" in result.output
@@ -500,4 +497,8 @@ class TestCLIIntegration:
         # fetch requires a query argument, Click will error on missing arg
         result = runner.invoke(okf, ["fetch", ""])
         # Empty string query should produce an error
-        assert result.exit_code != 0 or "non-empty" in result.output.lower() or "error" in result.output.lower()
+        assert (
+            result.exit_code != 0
+            or "non-empty" in result.output.lower()
+            or "error" in result.output.lower()
+        )

@@ -20,6 +20,7 @@ def run_async(coro):
 def _clear_index_cache():
     """Clear the service-layer index cache between tests."""
     from okf_tools.service import _index_cache
+
     _index_cache.clear()
     yield
     _index_cache.clear()

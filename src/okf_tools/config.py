@@ -8,12 +8,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .errors import ConfigError
 
-
-DEFAULTS: Dict[str, Any] = {
+DEFAULTS: dict[str, Any] = {
     "bundle_path": ".",
     "index_path": ".okf/index",
     "embedding_model": "BAAI/bge-small-en-v1.5",
@@ -42,12 +41,12 @@ class OkfConfig:
         return self.bundle_path / self.index_path / "okf.db"
 
 
-def get_defaults() -> Dict[str, Any]:
+def get_defaults() -> dict[str, Any]:
     """Return built-in default configuration values."""
     return dict(DEFAULTS)
 
 
-def find_bundle_root(start_path: Optional[Path] = None) -> Optional[Path]:
+def find_bundle_root(start_path: Path | None = None) -> Path | None:
     """Walk up directories to find .okf/config.json. Returns None if not found."""
     path = (start_path or Path.cwd()).resolve()
     for directory in [path, *path.parents]:
@@ -56,7 +55,7 @@ def find_bundle_root(start_path: Optional[Path] = None) -> Optional[Path]:
     return None
 
 
-def load_config(bundle_root: Optional[Path] = None) -> OkfConfig:
+def load_config(bundle_root: Path | None = None) -> OkfConfig:
     """Load config from bundle → user → defaults. Merge per-field."""
     merged = get_defaults()
 
@@ -94,12 +93,12 @@ def load_config(bundle_root: Optional[Path] = None) -> OkfConfig:
     )
 
 
-def _read_json(path: Path) -> Dict[str, Any]:
+def _read_json(path: Path) -> dict[str, Any]:
     """Read and parse a JSON config file. Raises ConfigError on failure."""
     try:
         text = path.read_text(encoding="utf-8")
         return json.loads(text)
     except json.JSONDecodeError as e:
-        raise ConfigError(str(path), f"Invalid JSON: {e}")
+        raise ConfigError(str(path), f"Invalid JSON: {e}") from e
     except OSError as e:
-        raise ConfigError(str(path), str(e))
+        raise ConfigError(str(path), str(e)) from e

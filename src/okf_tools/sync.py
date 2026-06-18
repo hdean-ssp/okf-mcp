@@ -6,9 +6,8 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List
 
-from .bundle import Concept, is_concept_file, parse_concept, walk_concepts
+from .bundle import Concept, is_concept_file, parse_concept
 from .config import OkfConfig
 from .errors import ParseError
 from .search import VectorIndex, embed_batch
@@ -22,9 +21,9 @@ EMBED_BATCH_SIZE = 5
 class ChangeSet:
     """Files changed since last index sync."""
 
-    added: List[Path] = field(default_factory=list)
-    modified: List[Path] = field(default_factory=list)
-    deleted: List[str] = field(default_factory=list)
+    added: list[Path] = field(default_factory=list)
+    modified: list[Path] = field(default_factory=list)
+    deleted: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -35,14 +34,14 @@ class SyncSummary:
     updated: int = 0
     removed: int = 0
     total_indexed: int = 0
-    skipped: List[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
 
 
 def detect_changes(bundle_root: Path, index: VectorIndex) -> ChangeSet:
     """Compare filesystem state to indexed state."""
     changes = ChangeSet()
     indexed_mtimes = index.get_all_mtimes()
-    on_disk: Dict[str, Path] = {}
+    on_disk: dict[str, Path] = {}
 
     # Walk filesystem
     for md_file in sorted(bundle_root.rglob("*.md")):
@@ -73,9 +72,7 @@ def detect_changes(bundle_root: Path, index: VectorIndex) -> ChangeSet:
     return changes
 
 
-def incremental_reindex(
-    bundle_root: Path, index: VectorIndex, config: OkfConfig
-) -> SyncSummary:
+def incremental_reindex(bundle_root: Path, index: VectorIndex, config: OkfConfig) -> SyncSummary:
     """Process only changed files."""
     # Check model compatibility
     warning = index.check_model_compatibility(config.embedding_model)
@@ -86,12 +83,10 @@ def incremental_reindex(
     summary = SyncSummary()
 
     # Process added + modified
-    to_process = [(f, "added") for f in changes.added] + [
-        (f, "modified") for f in changes.modified
-    ]
+    to_process = [(f, "added") for f in changes.added] + [(f, "modified") for f in changes.modified]
 
     if to_process:
-        concepts: List[Concept] = []
+        concepts: list[Concept] = []
         for file_path, _ in to_process:
             try:
                 concept = parse_concept(file_path, bundle_root)
@@ -108,7 +103,7 @@ def incremental_reindex(
                 concepts = []
                 embeddings = []
 
-            for concept, embedding in zip(concepts, embeddings):
+            for concept, embedding in zip(concepts, embeddings, strict=True):
                 metadata = {
                     "title": concept.title,
                     "type": concept.type,
@@ -138,9 +133,7 @@ def incremental_reindex(
     return summary
 
 
-def full_reindex(
-    bundle_root: Path, index: VectorIndex, config: OkfConfig
-) -> SyncSummary:
+def full_reindex(bundle_root: Path, index: VectorIndex, config: OkfConfig) -> SyncSummary:
     """Drop all index data and rebuild from scratch."""
     summary = SyncSummary()
 
@@ -149,7 +142,7 @@ def full_reindex(
 
     # Walk and parse all concepts, tracking parse failures consistently
     # with incremental_reindex (which also reports skipped files).
-    concepts: List[Concept] = []
+    concepts: list[Concept] = []
     for md_file in sorted(bundle_root.rglob("*.md")):
         if not is_concept_file(md_file):
             continue
@@ -174,7 +167,7 @@ def full_reindex(
             index.set_sync_timestamp(time.time())
             return summary
 
-        for concept, embedding in zip(concepts, embeddings):
+        for concept, embedding in zip(concepts, embeddings, strict=True):
             metadata = {
                 "title": concept.title,
                 "type": concept.type,
@@ -193,7 +186,7 @@ def full_reindex(
     return summary
 
 
-def _embed_chunked(texts: List[str], model_name: str) -> list:
+def _embed_chunked(texts: list[str], model_name: str) -> list:
     """Embed texts in chunks of EMBED_BATCH_SIZE to bound memory usage.
 
     Returns a flat list of embeddings in the same order as the input texts.

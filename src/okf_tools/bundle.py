@@ -7,7 +7,7 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import frontmatter
 
@@ -19,13 +19,13 @@ class Concept:
     """In-memory representation of an OKF concept file."""
 
     concept_id: str
-    frontmatter: Dict[str, Any]
+    frontmatter: dict[str, Any]
     body: str
     file_path: Path
-    bundle: Optional[str] = None
+    bundle: str | None = None
 
     @property
-    def title(self) -> Optional[str]:
+    def title(self) -> str | None:
         return self.frontmatter.get("title")
 
     @property
@@ -33,11 +33,11 @@ class Concept:
         return self.frontmatter["type"]
 
     @property
-    def tags(self) -> List[str]:
+    def tags(self) -> list[str]:
         return self.frontmatter.get("tags", [])
 
     @property
-    def timestamp(self) -> Optional[str]:
+    def timestamp(self) -> str | None:
         return self.frontmatter.get("timestamp")
 
 
@@ -49,7 +49,7 @@ def parse_concept(file_path: Path, bundle_root: Path) -> Concept:
     try:
         post = frontmatter.load(str(file_path))
     except Exception as e:
-        raise ParseError(str(file_path), f"Failed to parse frontmatter: {e}")
+        raise ParseError(str(file_path), f"Failed to parse frontmatter: {e}") from e
 
     if not post.metadata:
         raise ParseError(str(file_path), "No YAML frontmatter found")
@@ -74,9 +74,9 @@ def format_concept(concept: Concept) -> str:
 # --- Validation ---
 
 
-def validate_frontmatter(fm: Dict[str, Any]) -> List[str]:
+def validate_frontmatter(fm: dict[str, Any]) -> list[str]:
     """Validate OKF compliance. Returns list of error messages (empty = valid)."""
-    errors: List[str] = []
+    errors: list[str] = []
 
     # type is required and must be non-empty string
     type_val = fm.get("type")
@@ -85,15 +85,15 @@ def validate_frontmatter(fm: Dict[str, Any]) -> List[str]:
 
     # timestamp must be ISO 8601 if present
     ts = fm.get("timestamp")
-    if ts is not None:
-        if not _is_iso8601(ts):
-            errors.append(f"'timestamp' must be ISO 8601 format, got: {ts}")
+    if ts is not None and not _is_iso8601(ts):
+        errors.append(f"'timestamp' must be ISO 8601 format, got: {ts}")
 
     # tags must be a list of strings if present
     tags = fm.get("tags")
-    if tags is not None:
-        if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
-            errors.append("'tags' must be a list of strings")
+    if tags is not None and (
+        not isinstance(tags, list) or not all(isinstance(t, str) for t in tags)
+    ):
+        errors.append("'tags' must be a list of strings")
 
     return errors
 
@@ -143,10 +143,7 @@ def generate_slug(title: str) -> str:
         # Truncate at last hyphen boundary within 60 chars
         truncated = slug[:60]
         last_hyphen = truncated.rfind("-")
-        if last_hyphen > 0:
-            slug = truncated[:last_hyphen]
-        else:
-            slug = truncated
+        slug = truncated[:last_hyphen] if last_hyphen > 0 else truncated
 
     return slug
 
@@ -168,9 +165,9 @@ def resolve_unique_path(directory: Path, slug: str) -> Path:
 # --- Bundle Walking ---
 
 
-def walk_concepts(bundle_root: Path) -> List[Concept]:
+def walk_concepts(bundle_root: Path) -> list[Concept]:
     """Find and parse all concept .md files (excluding index.md, log.md)."""
-    concepts: List[Concept] = []
+    concepts: list[Concept] = []
     for md_file in sorted(bundle_root.rglob("*.md")):
         if not is_concept_file(md_file):
             continue
@@ -205,7 +202,7 @@ def update_index_file(directory: Path, concept_id: str, title: str) -> None:
     if index_path.exists():
         content = index_path.read_text(encoding="utf-8")
         # Check if entry for this file already exists
-        pattern = re.compile(rf"- \[.*\]\(\./{ re.escape(filename) }\)")
+        pattern = re.compile(rf"- \[.*\]\(\./{re.escape(filename)}\)")
         if pattern.search(content):
             # Update existing entry (use lambda to avoid backslash interpretation in replacement)
             content = pattern.sub(lambda _: entry, content)
@@ -227,7 +224,7 @@ def remove_from_index_file(directory: Path, concept_id: str) -> None:
         return
 
     filename = Path(concept_id).name + ".md"
-    pattern = re.compile(rf"- \[.*\]\(\./{ re.escape(filename) }\)\n?")
+    pattern = re.compile(rf"- \[.*\]\(\./{re.escape(filename)}\)\n?")
     content = index_path.read_text(encoding="utf-8")
     content = pattern.sub("", content)
     index_path.write_text(content, encoding="utf-8")
