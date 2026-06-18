@@ -65,9 +65,11 @@ All commands support `--format json|text|brief`. Output is JSON when piped (agen
 ## How It Works
 
 - **Markdown files are the source of truth** — the vector index is a derived sidecar, gitignored and rebuildable
-- **Hybrid search** — combines BM25 keyword matching with vector semantic similarity. No external services.
+- **Hybrid search** — combines BM25 keyword matching with vector semantic similarity (60/40 weighting). No external services.
 - **Local embeddings** — fastembed + BAAI/bge-small-en-v1.5 (384 dimensions), no API keys
 - **Incremental indexing** — only re-embeds changed files (mtime comparison)
+- **Memory-bounded** — chunked embedding keeps RSS under 500MB on 2GB servers
+- **Async MCP server** — blocking I/O runs in thread pool; embedding model pre-warmed at startup
 
 ## MCP Server
 
@@ -196,11 +198,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-Dev dependencies include `pytest`, `hypothesis` (property-based testing), and `pytest-asyncio`.
-
-## Branches
-
-- **`main`** — MCP server and CLI. Focused on the essential loop: init → commit → fetch → reindex, exposed via both CLI and MCP.
+190 tests covering CLI, MCP server, bundle operations, search, sync, and move/rename. Dev dependencies: `pytest`, `hypothesis` (property-based testing), `pytest-asyncio`.
 
 ## License
 
