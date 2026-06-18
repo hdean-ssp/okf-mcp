@@ -8,19 +8,18 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import click
 
-from . import __version__, OKF_SPEC_VERSION
+from . import OKF_SPEC_VERSION, __version__
 from .config import load_config
 from .errors import OkfError
-
 
 # --- Output helpers ---
 
 
-def _detect_format(explicit: Optional[str]) -> str:
+def _detect_format(explicit: str | None) -> str:
     """Determine output format: explicit > TTY detection."""
     if explicit:
         return explicit
@@ -76,9 +75,7 @@ def _handle_error(ctx: click.Context, message: str, exit_code: int = 1) -> None:
     """Write error to stderr in appropriate format."""
     fmt = ctx.obj.get("format", "text")
     if fmt == "json":
-        click.echo(
-            json.dumps({"error": message, "exit_code": exit_code}), err=True
-        )
+        click.echo(json.dumps({"error": message, "exit_code": exit_code}), err=True)
     else:
         click.echo(f"error: {message}", err=True)
     ctx.exit(exit_code)
@@ -89,7 +86,8 @@ def _handle_error(ctx: click.Context, message: str, exit_code: int = 1) -> None:
 
 @click.group()
 @click.option(
-    "--format", "fmt",
+    "--format",
+    "fmt",
     type=click.Choice(["json", "text", "brief"]),
     default=None,
     help="Output format (default: text for TTY, json for pipes)",
@@ -100,7 +98,7 @@ def _handle_error(ctx: click.Context, message: str, exit_code: int = 1) -> None:
     message="%(prog)s %(version)s (targeting OKF spec v" + OKF_SPEC_VERSION + ")",
 )
 @click.pass_context
-def okf(ctx: click.Context, fmt: Optional[str]) -> None:
+def okf(ctx: click.Context, fmt: str | None) -> None:
     """OKF bundle tools - search, author, and navigate knowledge."""
     ctx.ensure_object(dict)
     ctx.obj["format"] = _detect_format(fmt)
@@ -135,18 +133,23 @@ def init(ctx: click.Context) -> None:
     default="hybrid",
     help="Search mode (default: hybrid)",
 )
-@click.option("--format", "local_format", type=click.Choice(["json", "text", "brief"]),
-              default=None, help="Output format (overrides global --format)")
+@click.option(
+    "--format",
+    "local_format",
+    type=click.Choice(["json", "text", "brief"]),
+    default=None,
+    help="Output format (overrides global --format)",
+)
 @click.pass_context
 def fetch(
     ctx: click.Context,
     query: str,
-    top_n: Optional[int],
-    threshold: Optional[float],
-    type_filter: Optional[str],
-    tags: Optional[str],
+    top_n: int | None,
+    threshold: float | None,
+    type_filter: str | None,
+    tags: str | None,
     mode: str,
-    local_format: Optional[str],
+    local_format: str | None,
 ) -> None:
     """Semantic search over the knowledge bundle."""
     from .service import fetch_concepts
@@ -162,7 +165,13 @@ def fetch(
         config = load_config()
         tags_list = [t.strip() for t in tags.split(",")] if tags else None
         results = fetch_concepts(
-            config, query, top_n, threshold, type_filter, tags_list, mode=mode,
+            config,
+            query,
+            top_n,
+            threshold,
+            type_filter,
+            tags_list,
+            mode=mode,
         )
         data = [
             {
@@ -200,14 +209,17 @@ def commit(ctx: click.Context, **kwargs) -> None:
 
         # Dry run: show what would happen without persisting
         if kwargs.get("dry_run"):
-            _output(ctx, {
-                "dry_run": True,
-                "title": input_data.get("title"),
-                "type": input_data.get("type"),
-                "tags": input_data.get("tags", []),
-                "target_path": input_data.get("path", "(bundle root)"),
-                "content_length": len(input_data.get("content", "")),
-            })
+            _output(
+                ctx,
+                {
+                    "dry_run": True,
+                    "title": input_data.get("title"),
+                    "type": input_data.get("type"),
+                    "tags": input_data.get("tags", []),
+                    "target_path": input_data.get("path", "(bundle root)"),
+                    "content_length": len(input_data.get("content", "")),
+                },
+            )
             return
 
         concept_id = commit_concept(config, input_data)
@@ -276,10 +288,17 @@ def delete(ctx: click.Context, concept_id: str) -> None:
 @click.option("--since", help="Filter by timestamp (ISO 8601 date)")
 @click.option("--limit", type=int, help="Maximum results")
 @click.option("--path", "path_filter", help="Filter by subdirectory")
-@click.option("--format", "local_format", type=click.Choice(["json", "text", "brief"]),
-              default=None, help="Output format (overrides global --format)")
+@click.option(
+    "--format",
+    "local_format",
+    type=click.Choice(["json", "text", "brief"]),
+    default=None,
+    help="Output format (overrides global --format)",
+)
 @click.pass_context
-def list_cmd(ctx: click.Context, type_filter, tags, since, limit, path_filter, local_format) -> None:
+def list_cmd(
+    ctx: click.Context, type_filter, tags, since, limit, path_filter, local_format
+) -> None:
     """List concepts in the bundle."""
     from .service import list_concepts
 
@@ -290,10 +309,7 @@ def list_cmd(ctx: click.Context, type_filter, tags, since, limit, path_filter, l
         config = load_config()
         tags_list = [t.strip() for t in tags.split(",")] if tags else None
         concepts = list_concepts(config, type_filter, tags_list, since, limit, path_filter)
-        data = [
-            {"concept_id": c.concept_id, "title": c.title, "type": c.type}
-            for c in concepts
-        ]
+        data = [{"concept_id": c.concept_id, "title": c.title, "type": c.type} for c in concepts]
         _output(ctx, data)
     except OkfError as e:
         _handle_error(ctx, str(e))

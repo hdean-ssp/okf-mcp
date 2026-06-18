@@ -13,9 +13,8 @@ import atexit
 import json
 import logging
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
@@ -41,7 +40,7 @@ class AppState:
     replacing bare module-level globals.
     """
 
-    config: Optional[OkfConfig] = None
+    config: OkfConfig | None = None
 
     def set_config(self, config: OkfConfig) -> None:
         """Update the active bundle configuration."""
@@ -90,8 +89,8 @@ async def commit_concept(
     title: str,
     type: str,
     content: str,
-    tags: Optional[List[str]] = None,
-    path: Optional[str] = None,
+    tags: list[str] | None = None,
+    path: str | None = None,
     check_duplicates: bool = True,
 ) -> str:
     """Commit a new concept to the knowledge bundle.
@@ -115,12 +114,12 @@ async def commit_concept(
             concept_id = await asyncio.to_thread(service.commit_concept, config, input_data)
             return json.dumps({"concept_id": concept_id})
         except ValidationError as e:
-            raise ToolError(_handle_error(e))
+            raise ToolError(_handle_error(e)) from e
     except ToolError:
         raise
     except Exception:
         logging.getLogger(__name__).error("Unexpected error in commit_concept", exc_info=True)
-        raise ToolError("An internal error occurred")
+        raise ToolError("An internal error occurred") from None
 
 
 @mcp.tool()
@@ -133,14 +132,12 @@ async def init_bundle(path: str = ".") -> str:
     try:
         resolved = Path(path).resolve()
         if not resolved.exists() or not resolved.is_dir():
-            raise ToolError(
-                f"Path '{path}' does not exist or is not a directory"
-            )
+            raise ToolError(f"Path '{path}' does not exist or is not a directory")
 
         try:
             await asyncio.to_thread(service.init_bundle, resolved)
         except BundleAlreadyInitialisedError as e:
-            raise ToolError(str(e))
+            raise ToolError(str(e)) from e
 
         _state.set_config(load_config(resolved))
         return json.dumps({"path": str(resolved)})
@@ -148,16 +145,16 @@ async def init_bundle(path: str = ".") -> str:
         raise
     except Exception:
         logging.getLogger(__name__).error("Unexpected error in init_bundle", exc_info=True)
-        raise ToolError("An internal error occurred")
+        raise ToolError("An internal error occurred") from None
 
 
 @mcp.tool()
 async def update_concept(
     concept_id: str,
-    title: Optional[str] = None,
-    type: Optional[str] = None,
-    tags: Optional[List[str]] = None,
-    content: Optional[str] = None,
+    title: str | None = None,
+    type: str | None = None,
+    tags: list[str] | None = None,
+    content: str | None = None,
 ) -> str:
     """Update an existing concept in the bundle.
 
@@ -185,23 +182,23 @@ async def update_concept(
         try:
             await asyncio.to_thread(service.update_concept, config, concept_id, updates)
         except ConceptNotFoundError as e:
-            raise ToolError(_handle_error(e))
+            raise ToolError(_handle_error(e)) from e
         except ValidationError as e:
-            raise ToolError(_handle_error(e))
+            raise ToolError(_handle_error(e)) from e
 
         return json.dumps({"concept_id": concept_id})
     except ToolError:
         raise
     except Exception:
         logging.getLogger(__name__).error("Unexpected error in update_concept", exc_info=True)
-        raise ToolError("An internal error occurred")
+        raise ToolError("An internal error occurred") from None
 
 
 @mcp.tool()
 async def move_concept(
     concept_id: str,
     new_concept_id: str,
-    new_title: Optional[str] = None,
+    new_title: str | None = None,
 ) -> str:
     """Move or rename a concept within the bundle.
 
@@ -212,7 +209,8 @@ async def move_concept(
     Examples:
       - Rename: concept_id="notes/old-name", new_concept_id="notes/new-name"
       - Move:   concept_id="drafts/idea", new_concept_id="published/idea"
-      - Both:   concept_id="tmp/scratch", new_concept_id="guides/setup-guide", new_title="Setup Guide"
+      - Both:   concept_id="tmp/scratch", new_concept_id="guides/setup-guide",
+                new_title="Setup Guide"
     """
     try:
         config = _require_bundle()
@@ -222,14 +220,14 @@ async def move_concept(
             )
             return json.dumps({"old_concept_id": concept_id, "new_concept_id": result_id})
         except ConceptNotFoundError as e:
-            raise ToolError(_handle_error(e))
+            raise ToolError(_handle_error(e)) from e
         except ValidationError as e:
-            raise ToolError(_handle_error(e))
+            raise ToolError(_handle_error(e)) from e
     except ToolError:
         raise
     except Exception:
         logging.getLogger(__name__).error("Unexpected error in move_concept", exc_info=True)
-        raise ToolError("An internal error occurred")
+        raise ToolError("An internal error occurred") from None
 
 
 @mcp.tool()
@@ -241,12 +239,12 @@ async def delete_concept(concept_id: str) -> str:
             await asyncio.to_thread(service.delete_concept, config, concept_id)
             return json.dumps({"concept_id": concept_id})
         except ConceptNotFoundError as e:
-            raise ToolError(_handle_error(e))
+            raise ToolError(_handle_error(e)) from e
     except ToolError:
         raise
     except Exception:
         logging.getLogger(__name__).error("Unexpected error in delete_concept", exc_info=True)
-        raise ToolError("An internal error occurred")
+        raise ToolError("An internal error occurred") from None
 
 
 @mcp.tool()
@@ -262,12 +260,12 @@ async def show_concept(concept_id: str) -> str:
             result = {"concept_id": concept.concept_id, **concept.frontmatter, "body": concept.body}
             return json.dumps(result)
         except ConceptNotFoundError as e:
-            raise ToolError(_handle_error(e))
+            raise ToolError(_handle_error(e)) from e
     except ToolError:
         raise
     except Exception:
         logging.getLogger(__name__).error("Unexpected error in show_concept", exc_info=True)
-        raise ToolError("An internal error occurred")
+        raise ToolError("An internal error occurred") from None
 
 
 @mcp.tool()
@@ -288,7 +286,7 @@ async def reindex(full: bool = False) -> str:
         raise
     except Exception:
         logging.getLogger(__name__).error("Unexpected error in reindex", exc_info=True)
-        raise ToolError("An internal error occurred")
+        raise ToolError("An internal error occurred") from None
 
 
 @mcp.tool()
@@ -296,8 +294,8 @@ async def fetch_concepts(
     query: str,
     top_n: int = 5,
     threshold: float = 0.0,
-    type: Optional[str] = None,
-    tags: Optional[List[str]] = None,
+    type: str | None = None,
+    tags: list[str] | None = None,
     mode: str = "hybrid",
 ) -> str:
     """Search the knowledge bundle using natural language queries.
@@ -313,7 +311,13 @@ async def fetch_concepts(
 
         results = await asyncio.to_thread(
             service.fetch_concepts,
-            config, query, top_n, threshold, type, tags, mode,
+            config,
+            query,
+            top_n,
+            threshold,
+            type,
+            tags,
+            mode,
         )
 
         formatted_results = [
@@ -331,16 +335,16 @@ async def fetch_concepts(
         raise
     except Exception:
         logging.getLogger(__name__).error("Unexpected error in fetch_concepts", exc_info=True)
-        raise ToolError("An internal error occurred")
+        raise ToolError("An internal error occurred") from None
 
 
 @mcp.tool()
 async def list_concepts(
-    type: Optional[str] = None,
-    tags: Optional[List[str]] = None,
-    since: Optional[str] = None,
+    type: str | None = None,
+    tags: list[str] | None = None,
+    since: str | None = None,
     limit: int = 100,
-    path: Optional[str] = None,
+    path: str | None = None,
 ) -> str:
     """List concepts in the knowledge bundle with optional filters.
 
@@ -372,7 +376,7 @@ async def list_concepts(
         raise
     except Exception:
         logging.getLogger(__name__).error("Unexpected error in list_concepts", exc_info=True)
-        raise ToolError("An internal error occurred")
+        raise ToolError("An internal error occurred") from None
 
 
 @mcp.tool()
@@ -390,7 +394,7 @@ async def get_stats() -> str:
         raise
     except Exception:
         logging.getLogger(__name__).error("Unexpected error in get_stats", exc_info=True)
-        raise ToolError("An internal error occurred")
+        raise ToolError("An internal error occurred") from None
 
 
 def main() -> None:
@@ -423,8 +427,7 @@ def main() -> None:
         bundle_path = Path(args.bundle_path)
         if not bundle_path.exists() or not bundle_path.is_dir():
             print(
-                f"Error: --bundle-path '{args.bundle_path}' does not exist "
-                "or is not a directory.",
+                f"Error: --bundle-path '{args.bundle_path}' does not exist or is not a directory.",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -444,6 +447,7 @@ def main() -> None:
     if _state.config is not None:
         try:
             from .search import get_embedder
+
             print("Loading embedding model...", file=sys.stderr)
             get_embedder(_state.config.embedding_model)
             print("Embedding model ready.", file=sys.stderr)

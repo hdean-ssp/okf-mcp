@@ -6,11 +6,9 @@ import json
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 import numpy as np
-
-from .errors import IndexCorruptionError
 
 
 @dataclass
@@ -18,15 +16,15 @@ class SearchResult:
     """A single search result from semantic query."""
 
     concept_id: str
-    title: Optional[str]
+    title: str | None
     score: float
     snippet: str
-    bundle: Optional[str] = None
+    bundle: str | None = None
 
 
 # --- Embedding (lazy-loaded) ---
 
-_embedder_cache: Dict[str, Any] = {}
+_embedder_cache: dict[str, Any] = {}
 
 
 def get_embedder(model_name: str) -> Any:
@@ -45,7 +43,7 @@ def embed_text(text: str, model_name: str) -> np.ndarray:
     return np.array(results[0], dtype=np.float32)
 
 
-def embed_batch(texts: List[str], model_name: str) -> List[np.ndarray]:
+def embed_batch(texts: list[str], model_name: str) -> list[np.ndarray]:
     """Batch embed for reindex efficiency."""
     if not texts:
         return []
@@ -110,9 +108,7 @@ class VectorIndex:
         """)
         self._conn.commit()
 
-    def upsert(
-        self, concept_id: str, embedding: np.ndarray, metadata: Dict[str, Any]
-    ) -> None:
+    def upsert(self, concept_id: str, embedding: np.ndarray, metadata: dict[str, Any]) -> None:
         """Add or update a concept's embedding, metadata, and full-text index."""
         # Upsert metadata
         self._conn.execute(
@@ -129,17 +125,13 @@ class VectorIndex:
             ),
         )
         # Upsert embedding
-        self._conn.execute(
-            "DELETE FROM vec_concepts WHERE concept_id = ?", (concept_id,)
-        )
+        self._conn.execute("DELETE FROM vec_concepts WHERE concept_id = ?", (concept_id,))
         self._conn.execute(
             "INSERT INTO vec_concepts (concept_id, embedding) VALUES (?, ?)",
             (concept_id, embedding.tobytes()),
         )
         # Upsert FTS
-        self._conn.execute(
-            "DELETE FROM fts_concepts WHERE concept_id = ?", (concept_id,)
-        )
+        self._conn.execute("DELETE FROM fts_concepts WHERE concept_id = ?", (concept_id,))
         self._conn.execute(
             "INSERT INTO fts_concepts (concept_id, title, body) VALUES (?, ?, ?)",
             (concept_id, metadata.get("title", ""), metadata.get("body", "")),
@@ -149,20 +141,20 @@ class VectorIndex:
     def delete(self, concept_id: str) -> None:
         """Remove a concept from all index tables."""
         self._conn.execute("DELETE FROM concepts WHERE concept_id = ?", (concept_id,))
-        self._conn.execute(
-            "DELETE FROM vec_concepts WHERE concept_id = ?", (concept_id,)
-        )
-        self._conn.execute(
-            "DELETE FROM fts_concepts WHERE concept_id = ?", (concept_id,)
-        )
+        self._conn.execute("DELETE FROM vec_concepts WHERE concept_id = ?", (concept_id,))
+        self._conn.execute("DELETE FROM fts_concepts WHERE concept_id = ?", (concept_id,))
         self._conn.commit()
 
     # --- Search methods ---
 
     def search_semantic(
-        self, query_embedding: np.ndarray, top_n: int, threshold: float,
-        type_filter: Optional[str] = None, tags_filter: Optional[List[str]] = None,
-    ) -> List[SearchResult]:
+        self,
+        query_embedding: np.ndarray,
+        top_n: int,
+        threshold: float,
+        type_filter: str | None = None,
+        tags_filter: list[str] | None = None,
+    ) -> list[SearchResult]:
         """Pure vector cosine similarity search with optional metadata filters."""
         # sqlite-vec requires fetching by k, then we filter. Fetch extra to
         # account for filtered-out results.
@@ -189,12 +181,14 @@ class VectorIndex:
                     continue
             score = 1.0 - distance
             if score >= threshold:
-                results.append(SearchResult(
-                    concept_id=concept_id,
-                    title=title,
-                    score=round(score, 4),
-                    snippet=snippet or "",
-                ))
+                results.append(
+                    SearchResult(
+                        concept_id=concept_id,
+                        title=title,
+                        score=round(score, 4),
+                        snippet=snippet or "",
+                    )
+                )
             if len(results) >= top_n:
                 break
         return results
@@ -212,9 +206,13 @@ class VectorIndex:
         tokens = query.split()
         return " ".join(f'"{token}"' for token in tokens)
 
-    def search_keyword(self, query: str, top_n: int,
-                       type_filter: Optional[str] = None,
-                       tags_filter: Optional[List[str]] = None) -> List[SearchResult]:
+    def search_keyword(
+        self,
+        query: str,
+        top_n: int,
+        type_filter: str | None = None,
+        tags_filter: list[str] | None = None,
+    ) -> list[SearchResult]:
         """BM25 full-text keyword search via FTS5 with optional metadata filters."""
         safe_query = self._escape_fts5_query(query)
 
@@ -261,14 +259,16 @@ class VectorIndex:
         max_score = max(max_score, 0.001)  # Avoid division by zero
 
         results = []
-        for (concept_id, rank, title, snippet), raw in zip(rows, raw_scores):
+        for (concept_id, _rank, title, snippet), raw in zip(rows, raw_scores, strict=False):
             score = round(raw / max_score, 4)
-            results.append(SearchResult(
-                concept_id=concept_id,
-                title=title,
-                score=score,
-                snippet=snippet or "",
-            ))
+            results.append(
+                SearchResult(
+                    concept_id=concept_id,
+                    title=title,
+                    score=score,
+                    snippet=snippet or "",
+                )
+            )
         return results
 
     def search_hybrid(
@@ -278,9 +278,9 @@ class VectorIndex:
         top_n: int,
         threshold: float,
         semantic_weight: float = 0.6,
-        type_filter: Optional[str] = None,
-        tags_filter: Optional[List[str]] = None,
-    ) -> List[SearchResult]:
+        type_filter: str | None = None,
+        tags_filter: list[str] | None = None,
+    ) -> list[SearchResult]:
         """Hybrid search: merge BM25 keyword + vector semantic results.
 
         Fetches 2x top_n from each source, normalizes scores, and combines
@@ -291,18 +291,23 @@ class VectorIndex:
 
         # Get results from both engines with filters applied
         semantic_results = self.search_semantic(
-            query_embedding, fetch_n, 0.0,
-            type_filter=type_filter, tags_filter=tags_filter,
+            query_embedding,
+            fetch_n,
+            0.0,
+            type_filter=type_filter,
+            tags_filter=tags_filter,
         )
         keyword_results = self.search_keyword(
-            query, fetch_n,
-            type_filter=type_filter, tags_filter=tags_filter,
+            query,
+            fetch_n,
+            type_filter=type_filter,
+            tags_filter=tags_filter,
         )
 
         # Build score maps
-        semantic_scores: Dict[str, float] = {}
-        keyword_scores: Dict[str, float] = {}
-        metadata: Dict[str, SearchResult] = {}
+        semantic_scores: dict[str, float] = {}
+        keyword_scores: dict[str, float] = {}
+        metadata: dict[str, SearchResult] = {}
 
         for r in semantic_results:
             semantic_scores[r.concept_id] = r.score
@@ -315,7 +320,7 @@ class VectorIndex:
 
         # Combine scores for all candidates
         all_ids = set(semantic_scores.keys()) | set(keyword_scores.keys())
-        combined: List[tuple] = []
+        combined: list[tuple] = []
 
         keyword_weight = 1.0 - semantic_weight
         for cid in all_ids:
@@ -346,9 +351,9 @@ class VectorIndex:
         threshold: float,
         query: str = "",
         mode: str = "hybrid",
-        type_filter: Optional[str] = None,
-        tags_filter: Optional[List[str]] = None,
-    ) -> List[SearchResult]:
+        type_filter: str | None = None,
+        tags_filter: list[str] | None = None,
+    ) -> list[SearchResult]:
         """Unified search interface.
 
         Modes: 'hybrid' (default), 'semantic', 'keyword'.
@@ -357,21 +362,35 @@ class VectorIndex:
         if mode == "keyword":
             if not query:
                 return []
-            return self.search_keyword(query, top_n, type_filter=type_filter, tags_filter=tags_filter)
+            return self.search_keyword(
+                query, top_n, type_filter=type_filter, tags_filter=tags_filter
+            )
         elif mode == "semantic":
-            return self.search_semantic(query_embedding, top_n, threshold,
-                                       type_filter=type_filter, tags_filter=tags_filter)
+            return self.search_semantic(
+                query_embedding, top_n, threshold, type_filter=type_filter, tags_filter=tags_filter
+            )
         else:
             # Hybrid — needs both query text and embedding
             if not query:
-                return self.search_semantic(query_embedding, top_n, threshold,
-                                           type_filter=type_filter, tags_filter=tags_filter)
-            return self.search_hybrid(query, query_embedding, top_n, threshold,
-                                     type_filter=type_filter, tags_filter=tags_filter)
+                return self.search_semantic(
+                    query_embedding,
+                    top_n,
+                    threshold,
+                    type_filter=type_filter,
+                    tags_filter=tags_filter,
+                )
+            return self.search_hybrid(
+                query,
+                query_embedding,
+                top_n,
+                threshold,
+                type_filter=type_filter,
+                tags_filter=tags_filter,
+            )
 
     # --- Metadata accessors ---
 
-    def get_metadata(self, concept_id: str) -> Optional[Dict[str, Any]]:
+    def get_metadata(self, concept_id: str) -> dict[str, Any] | None:
         """Get stored metadata for a concept."""
         row = self._conn.execute(
             "SELECT title, type, tags, mtime, snippet FROM concepts WHERE concept_id = ?",
@@ -387,23 +406,19 @@ class VectorIndex:
             "snippet": row[4],
         }
 
-    def get_all_concept_ids(self) -> Set[str]:
+    def get_all_concept_ids(self) -> set[str]:
         """Return all indexed concept IDs."""
         rows = self._conn.execute("SELECT concept_id FROM concepts").fetchall()
         return {row[0] for row in rows}
 
-    def get_all_mtimes(self) -> Dict[str, float]:
+    def get_all_mtimes(self) -> dict[str, float]:
         """Return concept_id -> mtime mapping for all indexed concepts."""
-        rows = self._conn.execute(
-            "SELECT concept_id, mtime FROM concepts"
-        ).fetchall()
+        rows = self._conn.execute("SELECT concept_id, mtime FROM concepts").fetchall()
         return {row[0]: row[1] for row in rows}
 
-    def get_sync_timestamp(self) -> Optional[float]:
+    def get_sync_timestamp(self) -> float | None:
         """Get last sync timestamp."""
-        row = self._conn.execute(
-            "SELECT value FROM sync_meta WHERE key = 'last_sync'"
-        ).fetchone()
+        row = self._conn.execute("SELECT value FROM sync_meta WHERE key = 'last_sync'").fetchone()
         return float(row[0]) if row else None
 
     def set_sync_timestamp(self, ts: float) -> None:
@@ -426,7 +441,7 @@ class VectorIndex:
         )
         self._conn.commit()
 
-    def get_model_info(self) -> "tuple[str | None, int | None]":
+    def get_model_info(self) -> tuple[str | None, int | None]:
         """Return (model_name, dimensions) stored in this index, or (None, None)."""
         model_row = self._conn.execute(
             "SELECT value FROM sync_meta WHERE key = 'embedding_model'"
@@ -438,7 +453,7 @@ class VectorIndex:
         dims = int(dim_row[0]) if dim_row else None
         return model, dims
 
-    def check_model_compatibility(self, expected_model: str) -> "str | None":
+    def check_model_compatibility(self, expected_model: str) -> str | None:
         """Check if the index was built with a different model.
 
         Returns a warning message if there's a mismatch, None if compatible.

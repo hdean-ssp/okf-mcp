@@ -9,7 +9,7 @@ import json
 import logging
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .bundle import (
     Concept,
@@ -29,14 +29,13 @@ from .errors import (
     ValidationError,
 )
 from .search import SearchResult, VectorIndex, embed_text
-from .sync import SyncSummary, full_reindex, incremental_reindex
-
+from .sync import full_reindex, incremental_reindex
 
 # --- Index connection cache ---
 # Long-running processes (MCP server) benefit from reusing VectorIndex
 # connections rather than opening/closing on every call.
 
-_index_cache: Dict[str, VectorIndex] = {}
+_index_cache: dict[str, VectorIndex] = {}
 
 
 def get_index(config: OkfConfig) -> VectorIndex:
@@ -78,9 +77,7 @@ def init_bundle(path: Path) -> None:
     # Create .okf/ and config
     okf_dir.mkdir(parents=True, exist_ok=True)
     defaults = get_defaults()
-    config_path.write_text(
-        json.dumps(defaults, indent=2) + "\n", encoding="utf-8"
-    )
+    config_path.write_text(json.dumps(defaults, indent=2) + "\n", encoding="utf-8")
 
     # Create root index.md if missing
     index_path = path / "index.md"
@@ -103,7 +100,7 @@ def init_bundle(path: Path) -> None:
             gitignore.write_text(entry + "\n", encoding="utf-8")
 
 
-def commit_concept(config: OkfConfig, input_data: Dict[str, Any]) -> str:
+def commit_concept(config: OkfConfig, input_data: dict[str, Any]) -> str:
     """Full commit workflow. Returns concept_id."""
     bundle_path = config.bundle_path
 
@@ -113,7 +110,7 @@ def commit_concept(config: OkfConfig, input_data: Dict[str, Any]) -> str:
         raise ValidationError([f"Missing required field: {f}" for f in missing])
 
     # Build frontmatter
-    fm: Dict[str, Any] = {"type": input_data["type"]}
+    fm: dict[str, Any] = {"type": input_data["type"]}
     if input_data.get("title"):
         fm["title"] = input_data["title"]
     if input_data.get("tags"):
@@ -170,14 +167,15 @@ def commit_concept(config: OkfConfig, input_data: Dict[str, Any]) -> str:
     return concept_id
 
 
-def update_concept(config: OkfConfig, concept_id: str, updates: Dict[str, Any]) -> str:
+def update_concept(config: OkfConfig, concept_id: str, updates: dict[str, Any]) -> str:
     """Full update workflow. Returns concept_id."""
     bundle_path = config.bundle_path
     file_path = _resolve_concept_path(config, concept_id)
     concept = parse_concept(file_path, bundle_path)
+    old_title = concept.title
 
     # Merge updates
-    old_title = concept.title
+
     if "title" in updates:
         concept.frontmatter["title"] = updates["title"]
     if "type" in updates:
@@ -210,7 +208,7 @@ def update_concept(config: OkfConfig, concept_id: str, updates: Dict[str, Any]) 
 
 
 def move_concept(
-    config: OkfConfig, concept_id: str, new_concept_id: str, new_title: Optional[str] = None
+    config: OkfConfig, concept_id: str, new_concept_id: str, new_title: str | None = None
 ) -> str:
     """Move/rename a concept. Returns the new concept_id.
 
@@ -241,15 +239,13 @@ def move_concept(
     if not new_path.is_relative_to(bundle_path.resolve()):
         raise ValidationError(["Invalid new_concept_id: path resolves outside the bundle"])
     if new_path.exists():
-        raise ValidationError(
-            [f"A concept already exists at '{new_concept_id}'"]
-        )
+        raise ValidationError([f"A concept already exists at '{new_concept_id}'"])
 
     # Parse existing concept
     concept = parse_concept(old_path, bundle_path)
 
     # Update title if requested
-    old_title = concept.title
+
     if new_title is not None:
         concept.frontmatter["title"] = new_title
 
@@ -305,12 +301,12 @@ def delete_concept(config: OkfConfig, concept_id: str) -> None:
 def fetch_concepts(
     config: OkfConfig,
     query: str,
-    top_n: Optional[int] = None,
-    threshold: Optional[float] = None,
-    type_filter: Optional[str] = None,
-    tags_filter: Optional[List[str]] = None,
+    top_n: int | None = None,
+    threshold: float | None = None,
+    type_filter: str | None = None,
+    tags_filter: list[str] | None = None,
     mode: str = "hybrid",
-) -> List[SearchResult]:
+) -> list[SearchResult]:
     """Semantic search workflow.
 
     Filters are pushed into the search queries at the SQL level for
@@ -328,8 +324,13 @@ def fetch_concepts(
     else:
         query_embedding = embed_text(query, config.embedding_model)
         results = index.search(
-            query_embedding, n, t, query=query, mode=mode,
-            type_filter=type_filter, tags_filter=tags_filter,
+            query_embedding,
+            n,
+            t,
+            query=query,
+            mode=mode,
+            type_filter=type_filter,
+            tags_filter=tags_filter,
         )
 
     return results[:n]
@@ -337,12 +338,12 @@ def fetch_concepts(
 
 def list_concepts(
     config: OkfConfig,
-    type_filter: Optional[str] = None,
-    tags_filter: Optional[List[str]] = None,
-    since: Optional[str] = None,
-    limit: Optional[int] = None,
-    path_filter: Optional[str] = None,
-) -> List[Concept]:
+    type_filter: str | None = None,
+    tags_filter: list[str] | None = None,
+    since: str | None = None,
+    limit: int | None = None,
+    path_filter: str | None = None,
+) -> list[Concept]:
     """Filtered concept listing."""
     bundle_path = config.bundle_path
     concepts = walk_concepts(bundle_path)
@@ -355,16 +356,10 @@ def list_concepts(
         concepts = [c for c in concepts if c.frontmatter.get("type") == type_filter]
 
     if tags_filter:
-        concepts = [
-            c for c in concepts
-            if set(c.tags) & set(tags_filter)
-        ]
+        concepts = [c for c in concepts if set(c.tags) & set(tags_filter)]
 
     if since:
-        concepts = [
-            c for c in concepts
-            if _concept_matches_since(c, since)
-        ]
+        concepts = [c for c in concepts if _concept_matches_since(c, since)]
 
     # Sort by concept_id
     concepts.sort(key=lambda c: c.concept_id)
@@ -381,7 +376,7 @@ def show_concept(config: OkfConfig, concept_id: str) -> Concept:
     return parse_concept(file_path, config.bundle_path)
 
 
-def reindex(config: OkfConfig, full: bool = False) -> Dict[str, Any]:
+def reindex(config: OkfConfig, full: bool = False) -> dict[str, Any]:
     """Index rebuild. Returns summary dict."""
     index = get_index(config)
     if full or index.get_sync_timestamp() is None:
@@ -398,14 +393,14 @@ def reindex(config: OkfConfig, full: bool = False) -> Dict[str, Any]:
     }
 
 
-def get_stats(config: OkfConfig) -> Dict[str, Any]:
+def get_stats(config: OkfConfig) -> dict[str, Any]:
     """Bundle health statistics."""
     bundle_path = config.bundle_path
     concepts = walk_concepts(bundle_path)
 
     # Type and tag distributions
-    type_dist: Dict[str, int] = {}
-    tag_dist: Dict[str, int] = {}
+    type_dist: dict[str, int] = {}
+    tag_dist: dict[str, int] = {}
     for c in concepts:
         t = c.frontmatter.get("type", "")
         type_dist[t] = type_dist.get(t, 0) + 1
@@ -434,7 +429,7 @@ def _resolve_concept_path(config: OkfConfig, concept_id: str) -> Path:
     """Resolve concept_id to file path. Raises ConceptNotFoundError if missing."""
     file_path = (config.bundle_path / (concept_id + ".md")).resolve()
     if not file_path.is_relative_to(config.bundle_path.resolve()):
-        raise ValidationError([f"Invalid concept_id: path resolves outside the bundle"])
+        raise ValidationError(["Invalid concept_id: path resolves outside the bundle"])
     if not file_path.exists():
         raise ConceptNotFoundError(concept_id)
     return file_path
@@ -512,13 +507,11 @@ def _check_duplicates(config: OkfConfig, content: str, force: bool) -> None:
     results = index.search(embedding, 5, config.similarity_threshold)
     if results and not force:
         dup_list = "\n  ".join(
-            f"{r.concept_id} \"{r.title}\" (score={r.score}) — {r.snippet[:80]}..."
-            for r in results
+            f'{r.concept_id} "{r.title}" (score={r.score}) — {r.snippet[:80]}...' for r in results
         )
-        raise ValidationError([
-            f"Similar concepts already exist:\n  {dup_list}\n"
-            f"Use --force to commit anyway."
-        ])
+        raise ValidationError(
+            [f"Similar concepts already exist:\n  {dup_list}\nUse --force to commit anyway."]
+        )
 
 
 def _git_add(bundle_root: Path, file_path: Path) -> None:

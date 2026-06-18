@@ -1,11 +1,9 @@
 """Tests for the search module: vector index, FTS, and hybrid search."""
 
-from pathlib import Path
-
 import numpy as np
 import pytest
 
-from okf_tools.search import SearchResult, VectorIndex
+from okf_tools.search import VectorIndex
 
 
 @pytest.fixture
@@ -107,7 +105,9 @@ class TestSemanticSearch:
 
 class TestKeywordSearch:
     def test_finds_by_keyword(self, index):
-        _upsert_concept(index, "retry", title="Retry Pattern", body="Use exponential backoff for retries")
+        _upsert_concept(
+            index, "retry", title="Retry Pattern", body="Use exponential backoff for retries"
+        )
         _upsert_concept(index, "cache", title="Cache Strategy", body="Use Redis for caching")
 
         results = index.search_keyword("retry backoff", top_n=5)
@@ -140,9 +140,13 @@ class TestKeywordSearch:
 class TestHybridSearch:
     def test_combines_both_sources(self, index):
         # Concept with a keyword match
-        emb_kw = _upsert_concept(index, "keyword-match", title="Retry", body="retry with backoff pattern")
+        emb_kw = _upsert_concept(
+            index, "keyword-match", title="Retry", body="retry with backoff pattern"
+        )
         # Concept that's semantically similar (same embedding reused)
-        emb_sem = _upsert_concept(index, "semantic-match", title="Resilience", body="handle transient failures gracefully")
+        emb_sem = _upsert_concept(
+            index, "semantic-match", title="Resilience", body="handle transient failures gracefully"
+        )
 
         # Hybrid search should find at least one result
         query_emb = emb_kw  # Use the retry embedding as query

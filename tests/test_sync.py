@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import time
 from pathlib import Path
 from unittest.mock import patch
@@ -12,8 +11,7 @@ import pytest
 
 from okf_tools.config import OkfConfig
 from okf_tools.search import VectorIndex
-from okf_tools.sync import ChangeSet, SyncSummary, detect_changes, full_reindex, incremental_reindex
-
+from okf_tools.sync import detect_changes, full_reindex, incremental_reindex
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -98,7 +96,11 @@ class TestDetectChanges:
         # Index it with the current mtime
         emb = np.zeros(384, dtype=np.float32)
         old_mtime = path.stat().st_mtime
-        index.upsert("concept-a", emb, {"title": "A", "type": "P", "tags": [], "mtime": old_mtime, "snippet": "", "body": ""})
+        index.upsert(
+            "concept-a",
+            emb,
+            {"title": "A", "type": "P", "tags": [], "mtime": old_mtime, "snippet": "", "body": ""},
+        )
 
         # Touch the file to advance mtime
         time.sleep(0.05)
@@ -115,7 +117,11 @@ class TestDetectChanges:
         path = _create_concept(bundle, "stable")
         mtime = path.stat().st_mtime
         emb = np.zeros(384, dtype=np.float32)
-        index.upsert("stable", emb, {"title": "S", "type": "P", "tags": [], "mtime": mtime, "snippet": "", "body": ""})
+        index.upsert(
+            "stable",
+            emb,
+            {"title": "S", "type": "P", "tags": [], "mtime": mtime, "snippet": "", "body": ""},
+        )
 
         changes = detect_changes(bundle, index)
         assert changes.added == []
@@ -125,7 +131,11 @@ class TestDetectChanges:
     def test_deleted_files_detected(self, bundle, index):
         """Concepts in the index but not on disk are reported as deleted."""
         emb = np.zeros(384, dtype=np.float32)
-        index.upsert("gone-concept", emb, {"title": "G", "type": "P", "tags": [], "mtime": 1000.0, "snippet": "", "body": ""})
+        index.upsert(
+            "gone-concept",
+            emb,
+            {"title": "G", "type": "P", "tags": [], "mtime": 1000.0, "snippet": "", "body": ""},
+        )
 
         changes = detect_changes(bundle, index)
         assert changes.deleted == ["gone-concept"]
@@ -153,8 +163,23 @@ class TestDetectChanges:
         # Pre-index two concepts
         path_mod = _create_concept(bundle, "will-modify")
         emb = np.zeros(384, dtype=np.float32)
-        index.upsert("will-modify", emb, {"title": "M", "type": "P", "tags": [], "mtime": path_mod.stat().st_mtime, "snippet": "", "body": ""})
-        index.upsert("will-delete", emb, {"title": "D", "type": "P", "tags": [], "mtime": 1000.0, "snippet": "", "body": ""})
+        index.upsert(
+            "will-modify",
+            emb,
+            {
+                "title": "M",
+                "type": "P",
+                "tags": [],
+                "mtime": path_mod.stat().st_mtime,
+                "snippet": "",
+                "body": "",
+            },
+        )
+        index.upsert(
+            "will-delete",
+            emb,
+            {"title": "D", "type": "P", "tags": [], "mtime": 1000.0, "snippet": "", "body": ""},
+        )
 
         # Add a new concept
         _create_concept(bundle, "new-one")
@@ -197,7 +222,9 @@ class TestIncrementalReindex:
 
         # Modify
         time.sleep(0.05)
-        path.write_text("---\ntype: Pattern\ntitle: concept-x\n---\n\nUpdated body.\n", encoding="utf-8")
+        path.write_text(
+            "---\ntype: Pattern\ntitle: concept-x\n---\n\nUpdated body.\n", encoding="utf-8"
+        )
 
         summary = incremental_reindex(bundle, index, config)
         assert summary.updated == 1
@@ -307,7 +334,11 @@ class TestFullReindex:
         """Full reindex drops all existing data before rebuilding."""
         # Pre-populate index with a concept that doesn't exist on disk
         emb = np.zeros(384, dtype=np.float32)
-        index.upsert("ghost", emb, {"title": "Ghost", "type": "P", "tags": [], "mtime": 1.0, "snippet": "", "body": ""})
+        index.upsert(
+            "ghost",
+            emb,
+            {"title": "Ghost", "type": "P", "tags": [], "mtime": 1.0, "snippet": "", "body": ""},
+        )
         assert index.concept_count() == 1
 
         # Create one real concept

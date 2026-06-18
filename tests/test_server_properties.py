@@ -12,40 +12,83 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from hypothesis import given, HealthCheck, settings, strategies as st
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from okf_tools.config import OkfConfig
 from okf_tools.search import SearchResult
 from okf_tools.server import _state as server_state
 from okf_tools.server import (
     commit_concept as _commit_async,
+)
+from okf_tools.server import (
     fetch_concepts as _fetch_async,
+)
+from okf_tools.server import (
     init_bundle as _init_async,
+)
+from okf_tools.server import (
     show_concept as _show_async,
+)
+from okf_tools.server import (
     update_concept as _update_async,
 )
 
 
 # Sync wrappers
-def commit_concept(**kw): return asyncio.run(_commit_async(**kw))
-def fetch_concepts(**kw): return asyncio.run(_fetch_async(**kw))
-def init_bundle(**kw): return asyncio.run(_init_async(**kw))
-def show_concept(**kw): return asyncio.run(_show_async(**kw))
-def update_concept(**kw): return asyncio.run(_update_async(**kw))
+def commit_concept(**kw):
+    return asyncio.run(_commit_async(**kw))
+
+
+def fetch_concepts(**kw):
+    return asyncio.run(_fetch_async(**kw))
+
+
+def init_bundle(**kw):
+    return asyncio.run(_init_async(**kw))
+
+
+def show_concept(**kw):
+    return asyncio.run(_show_async(**kw))
+
+
+def update_concept(**kw):
+    return asyncio.run(_update_async(**kw))
 
 
 # Additional wrappers used in individual property tests
 from okf_tools.server import (
-    delete_concept as _delete_async,
-    list_concepts as _list_async,
-    get_stats as _get_stats_async,
-    reindex as _reindex_async,
     _handle_error,
 )
-def delete_concept(**kw): return asyncio.run(_delete_async(**kw))
-def list_concepts(**kw): return asyncio.run(_list_async(**kw))
-def get_stats(**kw): return asyncio.run(_get_stats_async(**kw))
-def reindex(**kw): return asyncio.run(_reindex_async(**kw))
+from okf_tools.server import (
+    delete_concept as _delete_async,
+)
+from okf_tools.server import (
+    get_stats as _get_stats_async,
+)
+from okf_tools.server import (
+    list_concepts as _list_async,
+)
+from okf_tools.server import (
+    reindex as _reindex_async,
+)
+
+
+def delete_concept(**kw):
+    return asyncio.run(_delete_async(**kw))
+
+
+def list_concepts(**kw):
+    return asyncio.run(_list_async(**kw))
+
+
+def get_stats(**kw):
+    return asyncio.run(_get_stats_async(**kw))
+
+
+def reindex(**kw):
+    return asyncio.run(_reindex_async(**kw))
+
 
 # ---------------------------------------------------------------------------
 # Hypothesis strategies for valid concept fields
@@ -84,8 +127,10 @@ valid_tags = st.lists(
 @pytest.fixture(autouse=True)
 def mock_embeddings_pbt():
     """Mock embed_text and VectorIndex to avoid real embedding calls."""
-    with patch("okf_tools.service.embed_text") as mock_embed, \
-         patch("okf_tools.service.VectorIndex") as mock_index_cls:
+    with (
+        patch("okf_tools.service.embed_text") as mock_embed,
+        patch("okf_tools.service.VectorIndex") as mock_index_cls,
+    ):
         mock_embed.return_value = [0.1] * 384
         mock_index = mock_index_cls.return_value
         mock_index.search.return_value = []
@@ -353,21 +398,22 @@ def test_invalid_updates_rejected_without_modification(invalid_type, pbt_config)
 # ---------------------------------------------------------------------------
 
 
-@given(whitespace_query=st.text(
-    alphabet=st.sampled_from([" ", "\t", "\n", "\r", "\v", "\f"]),
-    min_size=1, max_size=50
-))
+@given(
+    whitespace_query=st.text(
+        alphabet=st.sampled_from([" ", "\t", "\n", "\r", "\v", "\f"]), min_size=1, max_size=50
+    )
+)
 @settings(max_examples=50, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_whitespace_only_queries_rejected(whitespace_query, pbt_config):
     """Property 7: Whitespace-only queries are rejected.
-    
+
     **Validates: Requirements 6.5**
-    
+
     For any string composed entirely of whitespace characters,
     invoking fetch_concepts raises a validation error.
     """
     from mcp.server.fastmcp.exceptions import ToolError
-    
+
     with pytest.raises(ToolError) as exc_info:
         fetch_concepts(query=whitespace_query)
     assert "non-empty query" in str(exc_info.value).lower()
@@ -386,30 +432,30 @@ def test_whitespace_only_queries_rejected(whitespace_query, pbt_config):
 @settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_list_results_sorted_and_complete(num_concepts, type_val, pbt_config):
     """Property 8: List results are sorted and structurally complete.
-    
+
     **Validates: Requirements 7.2**
-    
+
     For any bundle with concepts, list_concepts returns results
     sorted by concept_id with each entry containing concept_id, title, type, tags.
     """
-    
+
     # Create multiple concepts
     for i in range(num_concepts):
         commit_concept(title=f"Concept {i}", type=type_val, content=f"Content for concept {i}")
-    
+
     result = list_concepts()
     data = json.loads(result)
-    
+
     concepts = data["concepts"]
     assert len(concepts) >= num_concepts
-    
+
     # Check structure
     for c in concepts:
         assert "concept_id" in c and c["concept_id"]
         assert "title" in c
         assert "type" in c
         assert "tags" in c and isinstance(c["tags"], list)
-    
+
     # Check sorted by concept_id
     ids = [c["concept_id"] for c in concepts]
     assert ids == sorted(ids)
@@ -422,40 +468,41 @@ def test_list_results_sorted_and_complete(num_concepts, type_val, pbt_config):
 
 
 @given(
-    error_messages=st.lists(st.text(min_size=1, max_size=50).filter(lambda s: s.strip()), min_size=1, max_size=5),
+    error_messages=st.lists(
+        st.text(min_size=1, max_size=50).filter(lambda s: s.strip()), min_size=1, max_size=5
+    ),
 )
 @settings(max_examples=50, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_validation_error_maps_all_messages(error_messages, pbt_config):
     """Property 10a: ValidationError maps all messages to MCP error response.
-    
+
     **Validates: Requirements 11.1**
     """
     from okf_tools.errors import ValidationError
-    
+
     err = ValidationError(error_messages)
     result = _handle_error(err)
-    
+
     for msg in error_messages:
         assert msg in result
 
 
 @given(
     concept_id=st.text(
-        alphabet=st.characters(whitelist_categories=("L", "N", "P")),
-        min_size=1, max_size=50
+        alphabet=st.characters(whitelist_categories=("L", "N", "P")), min_size=1, max_size=50
     ).filter(lambda s: s.strip()),
 )
 @settings(max_examples=50, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_concept_not_found_maps_id(concept_id, pbt_config):
     """Property 10b: ConceptNotFoundError maps concept_id to MCP error response.
-    
+
     **Validates: Requirements 11.2**
     """
     from okf_tools.errors import ConceptNotFoundError
-    
+
     err = ConceptNotFoundError(concept_id)
     result = _handle_error(err)
-    
+
     assert concept_id in result
 
 
@@ -466,33 +513,34 @@ def test_concept_not_found_maps_id(concept_id, pbt_config):
 
 
 @given(
-    error_msg=st.text(min_size=8, max_size=100).filter(lambda s: s.strip() and s.lower() not in "an internal error occurred"),
+    error_msg=st.text(min_size=8, max_size=100).filter(
+        lambda s: s.strip() and s.lower() not in "an internal error occurred"
+    ),
     file_path=st.text(
-        alphabet=st.characters(whitelist_categories=("L", "N", "P")),
-        min_size=5, max_size=50
+        alphabet=st.characters(whitelist_categories=("L", "N", "P")), min_size=5, max_size=50
     ).map(lambda s: f"/home/user/{s}.py"),
 )
 @settings(max_examples=50, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_unexpected_errors_hide_internal_details(error_msg, file_path, pbt_config):
     """Property 11: Unexpected errors do not expose internal details.
-    
+
     **Validates: Requirements 11.4**
-    
+
     For any unexpected exception, the MCP error response does not contain
     Python traceback text, absolute file paths, or class names.
     """
     from mcp.server.fastmcp.exceptions import ToolError
-    
+
     # Mock service.get_stats to raise an unexpected exception
     class CustomInternalError(Exception):
         pass
-    
+
     exc = CustomInternalError(f"{error_msg} in {file_path}")
-    
+
     with patch("okf_tools.server.service.get_stats", side_effect=exc):
         with pytest.raises(ToolError) as exc_info:
             get_stats()
-        
+
         error_response = str(exc_info.value)
         # Should not contain the internal error message
         assert error_msg not in error_response
@@ -518,17 +566,19 @@ def test_unexpected_errors_hide_internal_details(error_msg, file_path, pbt_confi
     pending=st.integers(min_value=0, max_value=50),
 )
 @settings(max_examples=50, suppress_health_check=[HealthCheck.function_scoped_fixture])
-def test_stats_response_has_correct_structure(concept_count, num_types, num_tags, pending, pbt_config):
+def test_stats_response_has_correct_structure(
+    concept_count, num_types, num_tags, pending, pbt_config
+):
     """Property 9: Stats response has correct structure and types.
-    
+
     **Validates: Requirements 10.2**
-    
+
     For any configured bundle, get_stats returns an object with
     concept_count (int >= 0), type_distribution (dict with int values),
     tag_distribution (dict with int values), last_reindex_timestamp (str or null),
     and pending_reembedding_count (int >= 0).
     """
-    
+
     # Build mock stats
     type_dist = {f"type_{i}": i + 1 for i in range(num_types)}
     tag_dist = {f"tag_{i}": i + 1 for i in range(num_tags)}
@@ -539,11 +589,11 @@ def test_stats_response_has_correct_structure(concept_count, num_types, num_tags
         "last_reindex_timestamp": None,
         "pending_reembedding_count": pending,
     }
-    
+
     with patch("okf_tools.server.service.get_stats", return_value=mock_stats):
         result = get_stats()
         data = json.loads(result)
-        
+
         assert isinstance(data["concept_count"], int) and data["concept_count"] >= 0
         assert isinstance(data["type_distribution"], dict)
         for v in data["type_distribution"].values():
@@ -551,8 +601,13 @@ def test_stats_response_has_correct_structure(concept_count, num_types, num_tags
         assert isinstance(data["tag_distribution"], dict)
         for v in data["tag_distribution"].values():
             assert isinstance(v, int)
-        assert data["last_reindex_timestamp"] is None or isinstance(data["last_reindex_timestamp"], str)
-        assert isinstance(data["pending_reembedding_count"], int) and data["pending_reembedding_count"] >= 0
+        assert data["last_reindex_timestamp"] is None or isinstance(
+            data["last_reindex_timestamp"], str
+        )
+        assert (
+            isinstance(data["pending_reembedding_count"], int)
+            and data["pending_reembedding_count"] >= 0
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -565,13 +620,14 @@ def test_stats_response_has_correct_structure(concept_count, num_types, num_tags
 @settings(max_examples=50, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_non_init_tools_require_configured_bundle(tool_idx, pbt_config):
     """Property 12: Non-init tools require a configured bundle.
-    
+
     **Validates: Requirements 12.5**
-    
+
     For each tool except init_bundle, invoking it when no bundle
     is configured returns an error indicating no bundle is configured.
     """
     from mcp.server.fastmcp.exceptions import ToolError
+
     tools_and_kwargs = [
         (commit_concept, {"title": "T", "type": "p", "content": "c"}),
         (update_concept, {"concept_id": "test", "title": "New"}),
@@ -582,9 +638,9 @@ def test_non_init_tools_require_configured_bundle(tool_idx, pbt_config):
         (reindex, {}),
         (get_stats, {}),
     ]
-    
+
     tool_fn, kwargs = tools_and_kwargs[tool_idx]
-    
+
     with patch.object(server_state, "config", None):
         with pytest.raises(ToolError) as exc_info:
             tool_fn(**kwargs)
