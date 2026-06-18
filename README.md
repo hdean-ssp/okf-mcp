@@ -1,24 +1,22 @@
 # okf-mcp
 
-Local semantic search over [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) knowledge bundles. No API keys, no cloud services.
+Semantic search and CRUD tooling for [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) knowledge bundles. Runs locally, entirely offline.
 
-**Why it exists:** Engineers waste hours rediscovering knowledge that already exists — scattered across wikis, Slack, git history, and colleagues' heads. OKF defines a vendor-neutral format (published by Google Cloud Platform) for persisting that knowledge as markdown; okf-mcp makes it queryable and useful in practice. OKF defines the format; okf-mcp provides the tooling layer.
-
-Write markdown files with YAML frontmatter → okf-mcp makes them queryable via hybrid search (BM25 keyword + vector cosine similarity).
+OKF is a vendor-neutral format (published by Google Cloud Platform) for persisting team knowledge as markdown with YAML frontmatter. okf-mcp indexes those files and makes them searchable via hybrid BM25 + vector cosine similarity. It exposes the same functionality through both a CLI and an MCP server, so humans and AI agents can query the same bundle.
 
 ## Quick Start
 
 ```bash
-# Install (requires Python 3.10+)
+# requires Python 3.10+
 git clone https://github.com/hdean-ssp/okf-mcp.git
 cd okf-mcp
 source activate.sh
 
-# Create a bundle
+# create a bundle
 mkdir ~/my-knowledge && cd ~/my-knowledge
 git init && okf init
 
-# Add a concept
+# add a concept
 okf commit --check-duplicates --json '{
   "title": "Retry Pattern",
   "type": "Pattern",
@@ -26,24 +24,21 @@ okf commit --check-duplicates --json '{
   "tags": ["reliability", "networking"]
 }'
 
-# Build search index (first run downloads ~30MB embedding model)
-# Note: first run takes ~30 seconds to download the model. Subsequent runs are instant.
+# build search index (downloads ~30MB embedding model on first run)
 okf reindex
 
-# Search
+# search
 okf fetch "how to handle network failures"
 ```
 
-## What Next?
+After that:
 
-After completing the Quick Start above:
-
-- `okf fetch "your question"` — search your bundle with natural language
-- `okf list` — browse all concepts
-- `okf show <concept-id>` — view full concept content
-- `okf stats` — check bundle health
-- See [Use Cases & Examples](docs/use-cases.md) for real-world workflows
-- See [Getting Started](docs/getting-started.md) for the full guide
+- `okf fetch "your question"` searches with natural language
+- `okf list` browses all concepts
+- `okf show <concept-id>` prints full content
+- `okf stats` reports bundle health
+- [Use Cases & Examples](docs/use-cases.md) has real-world workflows
+- [Getting Started](docs/getting-started.md) is the full walkthrough
 
 ## Commands
 
@@ -60,36 +55,33 @@ After completing the Quick Start above:
 | `okf reindex` | Rebuild the vector index |
 | `okf stats` | Bundle statistics |
 
-All commands support `--format json|text|brief`. Output is JSON when piped (agent-friendly), text when interactive.
+All commands accept `--format json|text|brief`. Piped output defaults to JSON; interactive defaults to text.
 
 ## How It Works
 
-- **Markdown files are the source of truth** — the vector index is a derived sidecar, gitignored and rebuildable
-- **Hybrid search** — combines BM25 keyword matching with vector semantic similarity (60/40 weighting). No external services.
-- **Local embeddings** — fastembed + BAAI/bge-small-en-v1.5 (384 dimensions), no API keys
-- **Incremental indexing** — only re-embeds changed files (mtime comparison)
-- **Memory-bounded** — chunked embedding keeps RSS under 500MB on 2GB servers
-- **Async MCP server** — blocking I/O runs in thread pool; embedding model pre-warmed at startup
+The markdown files in your bundle are the source of truth. The vector index is a derived sidecar (gitignored, rebuildable from scratch with `okf reindex --full`).
+
+Search combines BM25 keyword matching and vector cosine similarity at a 60/40 weighting. Embeddings come from fastembed using BAAI/bge-small-en-v1.5 (384 dimensions), stored in SQLite via sqlite-vec. Everything runs locally.
+
+Reindexing is incremental by default (mtime-based change detection). Embedding is chunked in small batches to keep memory usage under 500MB even on a 2GB VPS.
 
 ## MCP Server
 
-okf-mcp includes an MCP (Model Context Protocol) server, letting any MCP-compatible client (Kiro, Claude Desktop, etc.) use your knowledge bundle directly.
-
-### Quick Start — MCP Server
+The MCP server lets any MCP-compatible client (Kiro, Claude Desktop, etc.) interact with your bundle over stdio JSON-RPC.
 
 ```bash
-# Start the server (from within your bundle directory)
+# from within your bundle directory
 okf-mcp
 
-# Or point to a specific bundle
+# or point to a specific bundle
 okf-mcp --bundle-path ~/my-knowledge
 ```
 
-The server communicates over stdio (JSON-RPC). You don't run it manually for normal use — instead, configure your MCP client to launch it.
+You typically don't run it by hand. Instead, configure your MCP client to launch it:
 
 ### Client Configuration
 
-**Team/Shared Deployment** (recommended — see [Team Setup Guide](docs/team-setup.md)):
+**Team/shared deployment** (recommended, see [Team Setup Guide](docs/team-setup.md)):
 
 Create `~/.kiro/settings/mcp.json` on the server:
 
@@ -112,7 +104,7 @@ Create `~/.kiro/settings/mcp.json` on the server:
 }
 ```
 
-**Kiro via Remote-SSH** (generic setup — Kiro connects to server, MCP runs locally on server):
+**Kiro via Remote-SSH** (Kiro connects to server, MCP runs on server):
 
 ```json
 {
@@ -129,7 +121,7 @@ Create `~/.kiro/settings/mcp.json` on the server:
 }
 ```
 
-**Local setup** (Kiro and bundle on same machine):
+**Local setup** (Kiro and bundle on the same machine):
 
 ```json
 {
@@ -146,7 +138,7 @@ Create `~/.kiro/settings/mcp.json` on the server:
 }
 ```
 
-See [MCP Setup Guide](docs/mcp-setup.md) for individual installation or [Team Setup Guide](docs/team-setup.md) for onboarding to the shared deployment.
+See [MCP Setup Guide](docs/mcp-setup.md) for individual installation or [Team Setup Guide](docs/team-setup.md) for shared deployments.
 
 ### Available Tools
 
@@ -163,26 +155,17 @@ See [MCP Setup Guide](docs/mcp-setup.md) for individual installation or [Team Se
 | `reindex` | Rebuild the vector search index |
 | `get_stats` | Bundle health statistics |
 
-### Notes
-
-- The server starts without a bundle configured — use `init_bundle` to create one, or pass `--bundle-path`
-- All tools except `init_bundle` require a configured bundle
-- Errors are returned as structured MCP tool errors (no stack traces exposed)
-- All logging goes to stderr (stdout is the JSON-RPC channel)
+The server can start without a bundle configured. Pass `--bundle-path` or call `init_bundle` from the client. All tools except `init_bundle` require a configured bundle. Errors come back as structured MCP tool errors. Logging goes to stderr (stdout is the JSON-RPC channel).
 
 ## Agent Integration
 
-The MCP server handles agent integration directly — no hooks or CLI wrappers needed.
-
-- `agent/AGENT.md` — agent usage guide (when to use, MCP tools reference, workflow pattern)
-
-Agents access the knowledge bundle through MCP tools (`fetch_concepts`, `commit_concept`, etc.) rather than shelling out to CLI commands.
+Agents interact through the MCP tools directly (`fetch_concepts`, `commit_concept`, etc.). See `agent/AGENT.md` for the usage guide: when to query, when to commit, workflow patterns.
 
 ## Documentation
 
-- [Team Setup Guide](docs/team-setup.md) — onboarding for the shared deployment
-- [MCP Setup Guide](docs/mcp-setup.md) — individual installation and troubleshooting
-- [Getting Started](docs/getting-started.md) — CLI quick start
+- [Team Setup Guide](docs/team-setup.md) - shared deployment onboarding
+- [MCP Setup Guide](docs/mcp-setup.md) - individual installation and troubleshooting
+- [Getting Started](docs/getting-started.md) - CLI walkthrough
 - [CLI Reference](docs/cli-reference.md)
 - [Use Cases & Examples](docs/use-cases.md)
 - [Metrics & Impact Measurement](docs/metrics.md)
@@ -198,7 +181,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-190 tests covering CLI, MCP server, bundle operations, search, sync, and move/rename. Dev dependencies: `pytest`, `hypothesis` (property-based testing), `pytest-asyncio`.
+190 tests across CLI, MCP server, bundle operations, search, sync, and move/rename. Dev dependencies: `pytest`, `hypothesis`, `pytest-asyncio`.
 
 ## License
 
