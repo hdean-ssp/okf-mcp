@@ -30,7 +30,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e . pip-audit
-      - run: pip-audit --strict --desc on
+      - run: pip-audit --strict --desc on --skip-editable
 
   test:
     runs-on: ubuntu-latest
