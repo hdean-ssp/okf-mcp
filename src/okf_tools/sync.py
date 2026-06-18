@@ -147,8 +147,23 @@ def full_reindex(
     # Clear existing data
     index.clear()
 
-    # Walk and process all concepts
-    concepts = walk_concepts(bundle_root)
+    # Walk and parse all concepts, tracking parse failures consistently
+    # with incremental_reindex (which also reports skipped files).
+    concepts: List[Concept] = []
+    for md_file in sorted(bundle_root.rglob("*.md")):
+        if not is_concept_file(md_file):
+            continue
+        # Skip .okf/ sidecar
+        try:
+            md_file.relative_to(bundle_root / ".okf")
+            continue
+        except ValueError:
+            pass
+        try:
+            concept = parse_concept(md_file, bundle_root)
+            concepts.append(concept)
+        except ParseError:
+            summary.skipped.append(str(md_file))
 
     if concepts:
         texts = [c.body for c in concepts]

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "okf-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server for OKF knowledge bundles — semantic search and authoring via Model Context Protocol"
 readme = "README.md"
 license = "Apache-2.0"
