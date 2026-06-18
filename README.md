@@ -183,6 +183,10 @@ pytest
 
 190 tests across CLI, MCP server, bundle operations, search, sync, and move/rename. Dev dependencies: `pytest`, `hypothesis`, `pytest-asyncio`.
 
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for the production readiness plan — input hardening, data integrity, deployment tooling, and the path to a stable 1.0 release.
+
 ## License
 
 Apache 2.0
