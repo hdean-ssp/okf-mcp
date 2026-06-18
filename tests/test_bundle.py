@@ -1,11 +1,8 @@
 """Tests for bundle module: parsing, formatting, slugs, validation."""
 
-from pathlib import Path
-
 import pytest
 
 from okf_tools.bundle import (
-    Concept,
     format_concept,
     generate_slug,
     is_concept_file,
@@ -142,18 +139,14 @@ class TestIndexFile:
         assert "- [My Concept](./my-concept.md)" in content
 
     def test_update_existing_entry(self, tmp_path):
-        (tmp_path / "index.md").write_text(
-            "# Dir\n\n- [Old Title](./my-concept.md)\n"
-        )
+        (tmp_path / "index.md").write_text("# Dir\n\n- [Old Title](./my-concept.md)\n")
         update_index_file(tmp_path, "my-concept", "New Title")
         content = (tmp_path / "index.md").read_text()
         assert "New Title" in content
         assert "Old Title" not in content
 
     def test_remove_entry(self, tmp_path):
-        (tmp_path / "index.md").write_text(
-            "# Dir\n\n- [A](./a.md)\n- [B](./b.md)\n"
-        )
+        (tmp_path / "index.md").write_text("# Dir\n\n- [A](./a.md)\n- [B](./b.md)\n")
         remove_from_index_file(tmp_path, "a")
         content = (tmp_path / "index.md").read_text()
         assert "a.md" not in content

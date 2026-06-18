@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -12,13 +13,13 @@ from mcp.server.fastmcp.exceptions import ToolError
 from okf_tools.bundle import parse_concept
 from okf_tools.config import OkfConfig
 from okf_tools.errors import ConceptNotFoundError, ValidationError
-from okf_tools.service import commit_concept, move_concept, show_concept
 from okf_tools.server import _state as server_state
 from okf_tools.server import move_concept as _mcp_move_async
-import asyncio
+from okf_tools.service import move_concept
 
 
-def mcp_move_concept(**kw): return asyncio.run(_mcp_move_async(**kw))
+def mcp_move_concept(**kw):
+    return asyncio.run(_mcp_move_async(**kw))
 
 
 # ---------------------------------------------------------------------------
@@ -52,8 +53,10 @@ def config(bundle):
 @pytest.fixture(autouse=True)
 def mock_embeddings():
     """Mock embedding calls to avoid downloading models."""
-    with patch("okf_tools.service.embed_text") as mock_embed, \
-         patch("okf_tools.service.VectorIndex") as mock_index_cls:
+    with (
+        patch("okf_tools.service.embed_text") as mock_embed,
+        patch("okf_tools.service.VectorIndex") as mock_index_cls,
+    ):
         mock_embed.return_value = [0.1] * 384
         mock_index = mock_index_cls.return_value
         mock_index.search.return_value = []
@@ -65,7 +68,9 @@ def mock_embeddings():
         yield {"embed_text": mock_embed, "VectorIndex": mock_index_cls, "index": mock_index}
 
 
-def _create_concept(bundle: Path, concept_id: str, title: str = "Test", body: str = "Body.") -> Path:
+def _create_concept(
+    bundle: Path, concept_id: str, title: str = "Test", body: str = "Body."
+) -> Path:
     """Write a concept file directly to disk."""
     file_path = bundle / (concept_id + ".md")
     file_path.parent.mkdir(parents=True, exist_ok=True)

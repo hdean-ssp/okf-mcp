@@ -23,31 +23,74 @@ from okf_tools.errors import (
 from okf_tools.server import (
     _handle_error,
     _require_bundle,
+)
+from okf_tools.server import (
     _state as server_state,
 )
 from okf_tools.server import (
-    init_bundle as _init_bundle_async,
     commit_concept as _commit_concept_async,
-    update_concept as _update_concept_async,
+)
+from okf_tools.server import (
     delete_concept as _delete_concept_async,
+)
+from okf_tools.server import (
     fetch_concepts as _fetch_concepts_async,
-    list_concepts as _list_concepts_async,
-    show_concept as _show_concept_async,
-    reindex as _reindex_async,
+)
+from okf_tools.server import (
     get_stats as _get_stats_async,
+)
+from okf_tools.server import (
+    init_bundle as _init_bundle_async,
+)
+from okf_tools.server import (
+    list_concepts as _list_concepts_async,
+)
+from okf_tools.server import (
+    reindex as _reindex_async,
+)
+from okf_tools.server import (
+    show_concept as _show_concept_async,
+)
+from okf_tools.server import (
+    update_concept as _update_concept_async,
 )
 
 
 # Sync wrappers for async tool handlers (avoids rewriting every test to async)
-def init_bundle(**kw): return asyncio.run(_init_bundle_async(**kw))
-def commit_concept(**kw): return asyncio.run(_commit_concept_async(**kw))
-def update_concept(**kw): return asyncio.run(_update_concept_async(**kw))
-def delete_concept(**kw): return asyncio.run(_delete_concept_async(**kw))
-def fetch_concepts(**kw): return asyncio.run(_fetch_concepts_async(**kw))
-def list_concepts(**kw): return asyncio.run(_list_concepts_async(**kw))
-def show_concept(**kw): return asyncio.run(_show_concept_async(**kw))
-def reindex(**kw): return asyncio.run(_reindex_async(**kw))
-def get_stats(**kw): return asyncio.run(_get_stats_async(**kw))
+def init_bundle(**kw):
+    return asyncio.run(_init_bundle_async(**kw))
+
+
+def commit_concept(**kw):
+    return asyncio.run(_commit_concept_async(**kw))
+
+
+def update_concept(**kw):
+    return asyncio.run(_update_concept_async(**kw))
+
+
+def delete_concept(**kw):
+    return asyncio.run(_delete_concept_async(**kw))
+
+
+def fetch_concepts(**kw):
+    return asyncio.run(_fetch_concepts_async(**kw))
+
+
+def list_concepts(**kw):
+    return asyncio.run(_list_concepts_async(**kw))
+
+
+def show_concept(**kw):
+    return asyncio.run(_show_concept_async(**kw))
+
+
+def reindex(**kw):
+    return asyncio.run(_reindex_async(**kw))
+
+
+def get_stats(**kw):
+    return asyncio.run(_get_stats_async(**kw))
 
 
 # ---------------------------------------------------------------------------
@@ -65,8 +108,10 @@ def configured_server(sample_config):
 @pytest.fixture(autouse=True)
 def mock_embeddings():
     """Mock embed_text and VectorIndex to avoid real embedding calls."""
-    with patch("okf_tools.service.embed_text") as mock_embed, \
-         patch("okf_tools.service.VectorIndex") as mock_index_cls:
+    with (
+        patch("okf_tools.service.embed_text") as mock_embed,
+        patch("okf_tools.service.VectorIndex") as mock_index_cls,
+    ):
         # embed_text returns a fake embedding vector
         mock_embed.return_value = [0.1] * 384
         # VectorIndex mock with basic methods
@@ -171,6 +216,7 @@ class TestMain:
         with patch.object(sys, "argv", ["okf-mcp", "--bundle-path", "/nonexistent"]):
             with pytest.raises(SystemExit) as exc_info:
                 from okf_tools import server
+
                 server.main()
             assert exc_info.value.code == 1
         captured = capsys.readouterr()
@@ -183,6 +229,7 @@ class TestMain:
         with patch.object(sys, "argv", ["okf-mcp", "--bundle-path", str(file_path)]):
             with pytest.raises(SystemExit) as exc_info:
                 from okf_tools import server
+
                 server.main()
             assert exc_info.value.code == 1
         captured = capsys.readouterr()
@@ -250,7 +297,10 @@ class TestInitBundle:
         """init_bundle on already-initialized bundle raises ToolError."""
         with pytest.raises(ToolError) as exc_info:
             init_bundle(path=str(tmp_bundle))
-        assert "already initialised" in str(exc_info.value).lower() or "already initialized" in str(exc_info.value).lower()
+        assert (
+            "already initialised" in str(exc_info.value).lower()
+            or "already initialized" in str(exc_info.value).lower()
+        )
 
     def test_init_invalid_path_returns_error(self):
         """init_bundle with nonexistent path raises ToolError."""

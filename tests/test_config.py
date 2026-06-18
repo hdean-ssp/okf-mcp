@@ -1,11 +1,10 @@
 """Tests for configuration loading and merging."""
 
 import json
-from pathlib import Path
 
 import pytest
 
-from okf_tools.config import get_defaults, load_config, find_bundle_root
+from okf_tools.config import find_bundle_root, get_defaults, load_config
 from okf_tools.errors import ConfigError
 
 
