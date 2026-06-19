@@ -16,6 +16,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
@@ -309,23 +310,26 @@ async def fetch_concepts(
         if not query.strip():
             raise ToolError("A non-empty query is required")
 
-        results = await asyncio.to_thread(
-            service.fetch_concepts,
-            config,
-            query,
-            top_n,
-            threshold,
-            type,
-            tags,
-            mode,
-        )
+        try:
+            results = await asyncio.to_thread(
+                service.fetch_concepts,
+                config,
+                query,
+                top_n,
+                threshold,
+                type,
+                tags,
+                mode,
+            )
+        except ValueError as e:
+            raise ToolError(f"Search failed: {e}") from e
 
         formatted_results = [
             {
                 "concept_id": r.concept_id,
                 "title": r.title,
-                "score": r.score,
-                "snippet": r.snippet[:200],
+                "score": r.score if np.isfinite(r.score) else 0.0,
+                "snippet": (r.snippet or "")[:200],
             }
             for r in results
         ]

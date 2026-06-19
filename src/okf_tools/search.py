@@ -37,10 +37,20 @@ def get_embedder(model_name: str) -> Any:
 
 
 def embed_text(text: str, model_name: str) -> np.ndarray:
-    """Embed a single text string. Returns 384-dim vector."""
+    """Embed a single text string. Returns 384-dim unit vector.
+
+    Validates the result is finite and has non-zero norm. Raises ValueError
+    if the embedding model produces a degenerate vector.
+    """
     embedder = get_embedder(model_name)
     results = list(embedder.embed([text]))
-    return np.array(results[0], dtype=np.float32)
+    vec = np.array(results[0], dtype=np.float32)
+    if not np.all(np.isfinite(vec)):
+        raise ValueError(f"Embedding model returned non-finite values for input: {text[:80]!r}")
+    norm = float(np.linalg.norm(vec))
+    if norm < 1e-8:
+        raise ValueError(f"Embedding model returned near-zero vector for input: {text[:80]!r}")
+    return vec
 
 
 def embed_batch(texts: list[str], model_name: str) -> list[np.ndarray]:
@@ -179,6 +189,9 @@ class VectorIndex:
                 concept_tags = json.loads(c_tags) if c_tags else []
                 if not set(concept_tags) & set(tags_filter):
                     continue
+            # Guard against degenerate distances from sqlite-vec (None, NaN, Inf)
+            if distance is None or not np.isfinite(distance):
+                continue
             score = 1.0 - distance
             if score >= threshold:
                 results.append(
@@ -254,8 +267,10 @@ class VectorIndex:
             return []
 
         # Normalize BM25 ranks to 0-1 (rank is negative, closer to 0 = better)
-        raw_scores = [-row[1] for row in rows]
-        max_score = max(raw_scores) if raw_scores else 1.0
+        raw_scores = [-row[1] for row in rows if row[1] is not None]
+        if not raw_scores:
+            return []
+        max_score = max(raw_scores)
         max_score = max(max_score, 0.001)  # Avoid division by zero
 
         results = []
