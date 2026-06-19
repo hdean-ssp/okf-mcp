@@ -21,6 +21,21 @@ class ValidationError(OkfError):
         super().__init__(f"Validation failed: {'; '.join(errors)}")
 
 
+class IndexBusyError(OkfError):
+    """Raised when the index database is locked by another operation.
+
+    This is a transient, retryable error. Callers should back off and retry.
+    """
+
+    def __init__(self, operation: str = ""):
+        self.operation = operation
+        msg = "Index is busy"
+        if operation:
+            msg += f" (during {operation})"
+        msg += " — retry after a short delay"
+        super().__init__(msg)
+
+
 class IndexCorruptionError(OkfError):
     """Raised when the vector index is unreadable or corrupted."""
 

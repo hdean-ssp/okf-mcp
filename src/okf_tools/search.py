@@ -66,27 +66,46 @@ def embed_batch(texts: list[str], model_name: str) -> list[np.ndarray]:
 
 
 class VectorIndex:
-    """Manages the sqlite-vec sidecar database with hybrid search (vector + BM25)."""
+    """Manages the sqlite-vec sidecar database with hybrid search (vector + BM25).
+
+    Uses separate read and write connections to exploit WAL mode:
+    - Write connection: serialized access for upsert/delete/clear operations
+    - Read connection: concurrent access for searches and metadata queries
+
+    WAL mode allows unlimited concurrent readers alongside one writer.
+    busy_timeout gives the writer 5 seconds to acquire the lock before failing,
+    which handles brief contention from reindex or concurrent MCP requests.
+    """
+
+    BUSY_TIMEOUT_MS = 5000
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(db_path))
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._load_extension()
+
+        # Write connection — used for upsert, delete, clear, set_* operations
+        self._write_conn = sqlite3.connect(str(db_path))
+        self._write_conn.execute("PRAGMA journal_mode=WAL")
+        self._write_conn.execute(f"PRAGMA busy_timeout={self.BUSY_TIMEOUT_MS}")
+        self._load_extension(self._write_conn)
         self._create_tables()
 
-    def _load_extension(self) -> None:
-        """Load the sqlite-vec extension."""
+        # Read connection — used for searches and metadata queries
+        self._read_conn = sqlite3.connect(str(db_path), uri=False)
+        self._read_conn.execute(f"PRAGMA busy_timeout={self.BUSY_TIMEOUT_MS}")
+        self._load_extension(self._read_conn)
+
+    def _load_extension(self, conn: sqlite3.Connection) -> None:
+        """Load the sqlite-vec extension on a connection."""
         import sqlite_vec
 
-        self._conn.enable_load_extension(True)
-        sqlite_vec.load(self._conn)
-        self._conn.enable_load_extension(False)
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
 
     def _create_tables(self) -> None:
         """Create required tables if they don't exist."""
-        self._conn.executescript("""
+        self._write_conn.executescript("""
             CREATE TABLE IF NOT EXISTS sync_meta (
                 key TEXT PRIMARY KEY,
                 value TEXT
@@ -101,14 +120,14 @@ class VectorIndex:
             );
         """)
         # Vector virtual table
-        self._conn.execute("""
+        self._write_conn.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS vec_concepts USING vec0(
                 concept_id TEXT PRIMARY KEY,
                 embedding FLOAT[384]
             )
         """)
         # FTS5 full-text search table
-        self._conn.execute("""
+        self._write_conn.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS fts_concepts USING fts5(
                 concept_id UNINDEXED,
                 title,
@@ -116,44 +135,60 @@ class VectorIndex:
                 tokenize='porter unicode61'
             )
         """)
-        self._conn.commit()
+        self._write_conn.commit()
+
+    def _write_op(self, operation: str, fn: Any) -> Any:
+        """Execute a write operation, converting lock errors to IndexBusyError."""
+        from .errors import IndexBusyError
+
+        try:
+            return fn()
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower() or "busy" in str(e).lower():
+                raise IndexBusyError(operation) from e
+            raise
 
     def upsert(self, concept_id: str, embedding: np.ndarray, metadata: dict[str, Any]) -> None:
         """Add or update a concept's embedding, metadata, and full-text index."""
-        # Upsert metadata
-        self._conn.execute(
-            """INSERT OR REPLACE INTO concepts
-               (concept_id, title, type, tags, mtime, snippet)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (
-                concept_id,
-                metadata.get("title"),
-                metadata.get("type"),
-                json.dumps(metadata.get("tags", [])),
-                metadata.get("mtime"),
-                metadata.get("snippet"),
-            ),
-        )
-        # Upsert embedding
-        self._conn.execute("DELETE FROM vec_concepts WHERE concept_id = ?", (concept_id,))
-        self._conn.execute(
-            "INSERT INTO vec_concepts (concept_id, embedding) VALUES (?, ?)",
-            (concept_id, embedding.tobytes()),
-        )
-        # Upsert FTS
-        self._conn.execute("DELETE FROM fts_concepts WHERE concept_id = ?", (concept_id,))
-        self._conn.execute(
-            "INSERT INTO fts_concepts (concept_id, title, body) VALUES (?, ?, ?)",
-            (concept_id, metadata.get("title", ""), metadata.get("body", "")),
-        )
-        self._conn.commit()
+
+        def _do_upsert() -> None:
+            self._write_conn.execute(
+                """INSERT OR REPLACE INTO concepts
+                   (concept_id, title, type, tags, mtime, snippet)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    concept_id,
+                    metadata.get("title"),
+                    metadata.get("type"),
+                    json.dumps(metadata.get("tags", [])),
+                    metadata.get("mtime"),
+                    metadata.get("snippet"),
+                ),
+            )
+            self._write_conn.execute("DELETE FROM vec_concepts WHERE concept_id = ?", (concept_id,))
+            self._write_conn.execute(
+                "INSERT INTO vec_concepts (concept_id, embedding) VALUES (?, ?)",
+                (concept_id, embedding.tobytes()),
+            )
+            self._write_conn.execute("DELETE FROM fts_concepts WHERE concept_id = ?", (concept_id,))
+            self._write_conn.execute(
+                "INSERT INTO fts_concepts (concept_id, title, body) VALUES (?, ?, ?)",
+                (concept_id, metadata.get("title", ""), metadata.get("body", "")),
+            )
+            self._write_conn.commit()
+
+        self._write_op("upsert", _do_upsert)
 
     def delete(self, concept_id: str) -> None:
         """Remove a concept from all index tables."""
-        self._conn.execute("DELETE FROM concepts WHERE concept_id = ?", (concept_id,))
-        self._conn.execute("DELETE FROM vec_concepts WHERE concept_id = ?", (concept_id,))
-        self._conn.execute("DELETE FROM fts_concepts WHERE concept_id = ?", (concept_id,))
-        self._conn.commit()
+
+        def _do_delete() -> None:
+            self._write_conn.execute("DELETE FROM concepts WHERE concept_id = ?", (concept_id,))
+            self._write_conn.execute("DELETE FROM vec_concepts WHERE concept_id = ?", (concept_id,))
+            self._write_conn.execute("DELETE FROM fts_concepts WHERE concept_id = ?", (concept_id,))
+            self._write_conn.commit()
+
+        self._write_op("delete", _do_delete)
 
     # --- Search methods ---
 
@@ -169,7 +204,7 @@ class VectorIndex:
         # sqlite-vec requires fetching by k, then we filter. Fetch extra to
         # account for filtered-out results.
         fetch_k = top_n * 3 if (type_filter or tags_filter) else top_n
-        rows = self._conn.execute(
+        rows = self._read_conn.execute(
             """
             SELECT v.concept_id, v.distance, c.title, c.snippet, c.type, c.tags
             FROM vec_concepts v
@@ -248,7 +283,7 @@ class VectorIndex:
             ORDER BY rank
             LIMIT ?
         """
-        rows = self._conn.execute(sql, params).fetchall()
+        rows = self._read_conn.execute(sql, params).fetchall()
 
         if not rows:
             return []
@@ -407,7 +442,7 @@ class VectorIndex:
 
     def get_metadata(self, concept_id: str) -> dict[str, Any] | None:
         """Get stored metadata for a concept."""
-        row = self._conn.execute(
+        row = self._read_conn.execute(
             "SELECT title, type, tags, mtime, snippet FROM concepts WHERE concept_id = ?",
             (concept_id,),
         ).fetchone()
@@ -423,45 +458,55 @@ class VectorIndex:
 
     def get_all_concept_ids(self) -> set[str]:
         """Return all indexed concept IDs."""
-        rows = self._conn.execute("SELECT concept_id FROM concepts").fetchall()
+        rows = self._read_conn.execute("SELECT concept_id FROM concepts").fetchall()
         return {row[0] for row in rows}
 
     def get_all_mtimes(self) -> dict[str, float]:
         """Return concept_id -> mtime mapping for all indexed concepts."""
-        rows = self._conn.execute("SELECT concept_id, mtime FROM concepts").fetchall()
+        rows = self._read_conn.execute("SELECT concept_id, mtime FROM concepts").fetchall()
         return {row[0]: row[1] for row in rows}
 
     def get_sync_timestamp(self) -> float | None:
         """Get last sync timestamp."""
-        row = self._conn.execute("SELECT value FROM sync_meta WHERE key = 'last_sync'").fetchone()
+        row = self._read_conn.execute(
+            "SELECT value FROM sync_meta WHERE key = 'last_sync'"
+        ).fetchone()
         return float(row[0]) if row else None
 
     def set_sync_timestamp(self, ts: float) -> None:
         """Persist sync timestamp."""
-        self._conn.execute(
-            "INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('last_sync', ?)",
-            (str(ts),),
-        )
-        self._conn.commit()
+
+        def _do() -> None:
+            self._write_conn.execute(
+                "INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('last_sync', ?)",
+                (str(ts),),
+            )
+            self._write_conn.commit()
+
+        self._write_op("set_sync_timestamp", _do)
 
     def set_model_info(self, model_name: str, dimensions: int) -> None:
         """Store the embedding model name and dimensions used for this index."""
-        self._conn.execute(
-            "INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('embedding_model', ?)",
-            (model_name,),
-        )
-        self._conn.execute(
-            "INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('embedding_dimensions', ?)",
-            (str(dimensions),),
-        )
-        self._conn.commit()
+
+        def _do() -> None:
+            self._write_conn.execute(
+                "INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('embedding_model', ?)",
+                (model_name,),
+            )
+            self._write_conn.execute(
+                "INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('embedding_dimensions', ?)",
+                (str(dimensions),),
+            )
+            self._write_conn.commit()
+
+        self._write_op("set_model_info", _do)
 
     def get_model_info(self) -> tuple[str | None, int | None]:
         """Return (model_name, dimensions) stored in this index, or (None, None)."""
-        model_row = self._conn.execute(
+        model_row = self._read_conn.execute(
             "SELECT value FROM sync_meta WHERE key = 'embedding_model'"
         ).fetchone()
-        dim_row = self._conn.execute(
+        dim_row = self._read_conn.execute(
             "SELECT value FROM sync_meta WHERE key = 'embedding_dimensions'"
         ).fetchone()
         model = model_row[0] if model_row else None
@@ -485,24 +530,29 @@ class VectorIndex:
 
     def concept_count(self) -> int:
         """Number of indexed concepts."""
-        row = self._conn.execute("SELECT COUNT(*) FROM concepts").fetchone()
+        row = self._read_conn.execute("SELECT COUNT(*) FROM concepts").fetchone()
         return row[0] if row else 0
 
     def check_integrity(self) -> bool:
         """Verify database is openable and passes integrity_check."""
         try:
-            result = self._conn.execute("PRAGMA integrity_check").fetchone()
+            result = self._read_conn.execute("PRAGMA integrity_check").fetchone()
             return result[0] == "ok"
         except Exception:
             return False
 
     def clear(self) -> None:
         """Remove all data from the index (concepts, vectors, FTS). Used by full reindex."""
-        self._conn.execute("DELETE FROM concepts")
-        self._conn.execute("DELETE FROM vec_concepts")
-        self._conn.execute("DELETE FROM fts_concepts")
-        self._conn.commit()
+
+        def _do() -> None:
+            self._write_conn.execute("DELETE FROM concepts")
+            self._write_conn.execute("DELETE FROM vec_concepts")
+            self._write_conn.execute("DELETE FROM fts_concepts")
+            self._write_conn.commit()
+
+        self._write_op("clear", _do)
 
     def close(self) -> None:
-        """Close the database connection."""
-        self._conn.close()
+        """Close both database connections."""
+        self._read_conn.close()
+        self._write_conn.close()
