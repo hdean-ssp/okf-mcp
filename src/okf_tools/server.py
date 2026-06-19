@@ -25,12 +25,18 @@ from .config import OkfConfig, find_bundle_root, load_config
 from .errors import (
     BundleAlreadyInitialisedError,
     ConceptNotFoundError,
+    IndexBusyError,
     OkfError,
     ValidationError,
 )
 from .service import close_all_indexes
 
 mcp = FastMCP("okf-mcp")
+
+# Write serialization lock — ensures only one write operation (commit, update, delete,
+# move, reindex) executes at a time. Reads (fetch, list, show, stats) bypass this lock.
+# This prevents SQLite lock contention under concurrent MCP requests from multiple agents.
+_write_lock = asyncio.Lock()
 
 
 @dataclass
@@ -81,6 +87,8 @@ def _handle_error(e: OkfError) -> str:
         return f"Concept not found: {e.concept_id}"
     elif isinstance(e, BundleAlreadyInitialisedError):
         return str(e)
+    elif isinstance(e, IndexBusyError):
+        return f"Index busy: {e.operation}. The operation is retryable — try again shortly."
     else:
         return "An internal error occurred"
 
@@ -99,28 +107,31 @@ async def commit_concept(
     Creates a concept file with the given title, type, and content.
     Optionally checks for duplicate concepts before committing.
     """
-    try:
-        config = _require_bundle()
+    async with _write_lock:
         try:
-            input_data = {
-                "title": title,
-                "type": type,
-                "content": content,
-                "check_duplicates": check_duplicates,
-            }
-            if tags is not None:
-                input_data["tags"] = tags
-            if path is not None:
-                input_data["path"] = path
-            concept_id = await asyncio.to_thread(service.commit_concept, config, input_data)
-            return json.dumps({"concept_id": concept_id})
-        except ValidationError as e:
-            raise ToolError(_handle_error(e)) from e
-    except ToolError:
-        raise
-    except Exception:
-        logging.getLogger(__name__).error("Unexpected error in commit_concept", exc_info=True)
-        raise ToolError("An internal error occurred") from None
+            config = _require_bundle()
+            try:
+                input_data = {
+                    "title": title,
+                    "type": type,
+                    "content": content,
+                    "check_duplicates": check_duplicates,
+                }
+                if tags is not None:
+                    input_data["tags"] = tags
+                if path is not None:
+                    input_data["path"] = path
+                concept_id = await asyncio.to_thread(service.commit_concept, config, input_data)
+                return json.dumps({"concept_id": concept_id})
+            except ValidationError as e:
+                raise ToolError(_handle_error(e)) from e
+            except IndexBusyError as e:
+                raise ToolError(_handle_error(e)) from e
+        except ToolError:
+            raise
+        except Exception:
+            logging.getLogger(__name__).error("Unexpected error in commit_concept", exc_info=True)
+            raise ToolError("An internal error occurred") from None
 
 
 @mcp.tool()
@@ -130,23 +141,24 @@ async def init_bundle(path: str = ".") -> str:
     Creates .okf/config.json, a root index.md, and updates .gitignore if in a git repo.
     This is the only tool that does not require a pre-configured bundle.
     """
-    try:
-        resolved = Path(path).resolve()
-        if not resolved.exists() or not resolved.is_dir():
-            raise ToolError(f"Path '{path}' does not exist or is not a directory")
-
+    async with _write_lock:
         try:
-            await asyncio.to_thread(service.init_bundle, resolved)
-        except BundleAlreadyInitialisedError as e:
-            raise ToolError(str(e)) from e
+            resolved = Path(path).resolve()
+            if not resolved.exists() or not resolved.is_dir():
+                raise ToolError(f"Path '{path}' does not exist or is not a directory")
 
-        _state.set_config(load_config(resolved))
-        return json.dumps({"path": str(resolved)})
-    except ToolError:
-        raise
-    except Exception:
-        logging.getLogger(__name__).error("Unexpected error in init_bundle", exc_info=True)
-        raise ToolError("An internal error occurred") from None
+            try:
+                await asyncio.to_thread(service.init_bundle, resolved)
+            except BundleAlreadyInitialisedError as e:
+                raise ToolError(str(e)) from e
+
+            _state.set_config(load_config(resolved))
+            return json.dumps({"path": str(resolved)})
+        except ToolError:
+            raise
+        except Exception:
+            logging.getLogger(__name__).error("Unexpected error in init_bundle", exc_info=True)
+            raise ToolError("An internal error occurred") from None
 
 
 @mcp.tool()
@@ -162,37 +174,40 @@ async def update_concept(
     Applies only the provided fields to the concept, leaving unspecified fields unchanged.
     Re-embeds the content and updates the vector index.
     """
-    try:
-        config = _require_bundle()
-
-        updates: dict = {}
-        if title is not None:
-            updates["title"] = title
-        if type is not None:
-            updates["type"] = type
-        if tags is not None:
-            updates["tags"] = tags
-        if content is not None:
-            updates["content"] = content
-
-        if not updates:
-            raise ToolError(
-                "At least one update field must be provided (title, type, tags, or content)"
-            )
-
+    async with _write_lock:
         try:
-            await asyncio.to_thread(service.update_concept, config, concept_id, updates)
-        except ConceptNotFoundError as e:
-            raise ToolError(_handle_error(e)) from e
-        except ValidationError as e:
-            raise ToolError(_handle_error(e)) from e
+            config = _require_bundle()
 
-        return json.dumps({"concept_id": concept_id})
-    except ToolError:
-        raise
-    except Exception:
-        logging.getLogger(__name__).error("Unexpected error in update_concept", exc_info=True)
-        raise ToolError("An internal error occurred") from None
+            updates: dict = {}
+            if title is not None:
+                updates["title"] = title
+            if type is not None:
+                updates["type"] = type
+            if tags is not None:
+                updates["tags"] = tags
+            if content is not None:
+                updates["content"] = content
+
+            if not updates:
+                raise ToolError(
+                    "At least one update field must be provided (title, type, tags, or content)"
+                )
+
+            try:
+                await asyncio.to_thread(service.update_concept, config, concept_id, updates)
+            except ConceptNotFoundError as e:
+                raise ToolError(_handle_error(e)) from e
+            except ValidationError as e:
+                raise ToolError(_handle_error(e)) from e
+            except IndexBusyError as e:
+                raise ToolError(_handle_error(e)) from e
+
+            return json.dumps({"concept_id": concept_id})
+        except ToolError:
+            raise
+        except Exception:
+            logging.getLogger(__name__).error("Unexpected error in update_concept", exc_info=True)
+            raise ToolError("An internal error occurred") from None
 
 
 @mcp.tool()
@@ -213,39 +228,45 @@ async def move_concept(
       - Both:   concept_id="tmp/scratch", new_concept_id="guides/setup-guide",
                 new_title="Setup Guide"
     """
-    try:
-        config = _require_bundle()
+    async with _write_lock:
         try:
-            result_id = await asyncio.to_thread(
-                service.move_concept, config, concept_id, new_concept_id, new_title
-            )
-            return json.dumps({"old_concept_id": concept_id, "new_concept_id": result_id})
-        except ConceptNotFoundError as e:
-            raise ToolError(_handle_error(e)) from e
-        except ValidationError as e:
-            raise ToolError(_handle_error(e)) from e
-    except ToolError:
-        raise
-    except Exception:
-        logging.getLogger(__name__).error("Unexpected error in move_concept", exc_info=True)
-        raise ToolError("An internal error occurred") from None
+            config = _require_bundle()
+            try:
+                result_id = await asyncio.to_thread(
+                    service.move_concept, config, concept_id, new_concept_id, new_title
+                )
+                return json.dumps({"old_concept_id": concept_id, "new_concept_id": result_id})
+            except ConceptNotFoundError as e:
+                raise ToolError(_handle_error(e)) from e
+            except ValidationError as e:
+                raise ToolError(_handle_error(e)) from e
+            except IndexBusyError as e:
+                raise ToolError(_handle_error(e)) from e
+        except ToolError:
+            raise
+        except Exception:
+            logging.getLogger(__name__).error("Unexpected error in move_concept", exc_info=True)
+            raise ToolError("An internal error occurred") from None
 
 
 @mcp.tool()
 async def delete_concept(concept_id: str) -> str:
     """Delete a concept from the bundle by its concept_id."""
-    try:
-        config = _require_bundle()
+    async with _write_lock:
         try:
-            await asyncio.to_thread(service.delete_concept, config, concept_id)
-            return json.dumps({"concept_id": concept_id})
-        except ConceptNotFoundError as e:
-            raise ToolError(_handle_error(e)) from e
-    except ToolError:
-        raise
-    except Exception:
-        logging.getLogger(__name__).error("Unexpected error in delete_concept", exc_info=True)
-        raise ToolError("An internal error occurred") from None
+            config = _require_bundle()
+            try:
+                await asyncio.to_thread(service.delete_concept, config, concept_id)
+                return json.dumps({"concept_id": concept_id})
+            except ConceptNotFoundError as e:
+                raise ToolError(_handle_error(e)) from e
+            except IndexBusyError as e:
+                raise ToolError(_handle_error(e)) from e
+        except ToolError:
+            raise
+        except Exception:
+            logging.getLogger(__name__).error("Unexpected error in delete_concept", exc_info=True)
+            raise ToolError("An internal error occurred") from None
 
 
 @mcp.tool()
@@ -279,15 +300,18 @@ async def reindex(full: bool = False) -> str:
     Returns a JSON summary with counts of added, updated, removed, skipped concepts
     and the total number of indexed concepts.
     """
-    try:
-        config = _require_bundle()
-        summary = await asyncio.to_thread(service.reindex, config, full)
-        return json.dumps(summary)
-    except ToolError:
-        raise
-    except Exception:
-        logging.getLogger(__name__).error("Unexpected error in reindex", exc_info=True)
-        raise ToolError("An internal error occurred") from None
+    async with _write_lock:
+        try:
+            config = _require_bundle()
+            summary = await asyncio.to_thread(service.reindex, config, full)
+            return json.dumps(summary)
+        except ToolError:
+            raise
+        except IndexBusyError as e:
+            raise ToolError(_handle_error(e)) from e
+        except Exception:
+            logging.getLogger(__name__).error("Unexpected error in reindex", exc_info=True)
+            raise ToolError("An internal error occurred") from None
 
 
 @mcp.tool()
