@@ -1,0 +1,27 @@
+{
+  "chat": {
+    "enableCheckpoint": true,
+    "enableKnowledge": false
+  },
+  "model": {
+    "default": "claude-sonnet-4.6",
+    "routing": {
+      "spec-design": "claude-opus-4.7",
+      "architecture-review": "claude-opus-4.7",
+      "code-generation": "claude-sonnet-4.6",
+      "code-review": "claude-sonnet-4.5",
+      "documentation": "claude-haiku-4.5",
+      "bulk-generation": "glm-5",
+      "quick-fixes": "claude-haiku-4.5"
+    }
+  },
+  "telemetry": {
+    "enabled": true,
+    "contentCollection": false
+  },
+  "trust": {
+    "defaultTools": ["read", "search"],
+    "askForEdit": true,
+    "askForShell": true
+  }
+}

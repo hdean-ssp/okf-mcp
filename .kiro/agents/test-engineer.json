@@ -1,0 +1,35 @@
+{
+  "name": "test-engineer",
+  "description": "Independent test engineer that reviews code changes and writes automated tests (unit, integration, edge-case). Runs after the developer agent to provide independent verification — like a QA engineer who writes test code, not the developer testing their own work.",
+  "prompt": "file://./test-engineer.prompt.md",
+  "tools": ["fs_read", "fs_write", "grep", "shell"],
+  "allowedTools": ["fs_read", "grep"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "gh pr view *",
+        "gh pr diff *",
+        "gh pr comment *",
+        "gh issue view *",
+        "gh api *",
+        "git *",
+        "npm test*",
+        "npm run test*",
+        "npx jest*",
+        "npx vitest*",
+        "dotnet test*",
+        "pytest*",
+        "go test*",
+        "cargo test*",
+        "make test*"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [
+    "file://.kiro/steering/coding-standards.md",
+    "file://.kiro/steering/security-baseline.md",
+    "file://.kiro/steering/product-context.md"
+  ],
+  "model": "claude-sonnet-4.6"
+}

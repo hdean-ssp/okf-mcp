@@ -1,0 +1,26 @@
+{
+  "name": "project-manager",
+  "description": "Project Manager agent that reviews PRs, manages Kiro agent worker assignments, and ensures code quality standards before merge.",
+  "prompt": "file://./project-manager.prompt.md",
+  "tools": ["fs_read", "grep", "shell"],
+  "allowedTools": ["fs_read", "grep"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "gh pr *",
+        "gh issue *",
+        "gh run *",
+        "gh api *",
+        "gh project *"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [
+    "file://.kiro/steering/aws-aidlc-rules/core-workflow.md",
+    "file://.kiro/steering/coding-standards.md",
+    "file://.kiro/steering/architecture-principles.md",
+    "file://.kiro/steering/security-baseline.md"
+  ],
+  "model": "claude-sonnet-4.6"
+}

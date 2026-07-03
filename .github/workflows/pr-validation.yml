@@ -1,0 +1,169 @@
+name: PR Validation — Agentic Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+concurrency:
+  group: pr-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  architecture-review:
+    name: Architecture & Spec Compliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event.pull_request.draft != true
+    env:
+      KIRO_API_KEY: ${{ secrets.KIRO_API_KEY }}
+      GH_TOKEN: ${{ secrets.PROJECT_MANAGER_PAT }}
+      GITHUB_TOKEN: ${{ secrets.PROJECT_MANAGER_PAT }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Kiro CLI
+        run: |
+          curl -fsSL https://cli.kiro.dev/install | bash
+          echo "$HOME/.kiro/bin" >> $GITHUB_PATH
+
+      - name: Architecture review
+        run: |
+          git diff origin/main...HEAD | kiro-cli chat --no-interactive \
+            --trust-tools=fs_read,grep \
+            "Review these changes against our steering files in .kiro/steering/. Flag anything that doesn't fit the architecture principles, coding standards, or security baseline. Be specific about file/line references. Comment on PR #$PR_NUMBER via gh CLI with findings."
+
+      - name: Spec compliance check
+        run: |
+          if [ -d ".kiro/specs" ] && [ "$(ls -A .kiro/specs 2>/dev/null)" ]; then
+            kiro-cli chat --no-interactive \
+              --trust-tools=fs_read,grep \
+              "For each spec in .kiro/specs/, check whether all tasks in tasks.md are marked complete and tests exist for every acceptance criterion in requirements.md. Comment on PR #$PR_NUMBER with findings or confirmation."
+          else
+            echo "No specs found — skipping spec compliance check"
+          fi
+
+  security-scan:
+    name: Security & Licence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event.pull_request.draft != true
+    env:
+      KIRO_API_KEY: ${{ secrets.KIRO_API_KEY }}
+      GH_TOKEN: ${{ secrets.PROJECT_MANAGER_PAT }}
+      GITHUB_TOKEN: ${{ secrets.PROJECT_MANAGER_PAT }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Kiro CLI
+        run: |
+          curl -fsSL https://cli.kiro.dev/install | bash
+          echo "$HOME/.kiro/bin" >> $GITHUB_PATH
+
+      - name: Security & licence review
+        run: |
+          git diff origin/main...HEAD | kiro-cli chat --no-interactive \
+            --trust-tools=fs_read,grep \
+            "Scan these changes for: (1) security vulnerabilities per our security-baseline steering, (2) hardcoded secrets, (3) new OSS dependencies with restrictive licences (GPL, AGPL). Comment on PR #$PR_NUMBER with findings. Fail the workflow only if Critical or High severity issues found."
+
+  spec-compliance:
+    name: AI-DLC Spec Compliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event.pull_request.draft != true
+    env:
+      KIRO_API_KEY: ${{ secrets.KIRO_API_KEY }}
+      GH_TOKEN: ${{ secrets.PROJECT_MANAGER_PAT }}
+      GITHUB_TOKEN: ${{ secrets.PROJECT_MANAGER_PAT }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect aidlc-docs changes
+        id: detect
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1 2>/dev/null || true
+          CHANGED=$(git diff --name-only origin/main...HEAD -- 'aidlc-docs/**' '.kiro/specs/**' 2>/dev/null || true)
+          if [ -z "$CHANGED" ]; then
+            echo "No AI-DLC artefact changes — skipping compliance check."
+            echo "run_check=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "AI-DLC artefacts changed:"
+            echo "$CHANGED"
+            echo "run_check=true" >> "$GITHUB_OUTPUT"
+            # Extract unique feature slugs that were touched
+            FEATURES=$(echo "$CHANGED" | grep -E '^(aidlc-docs|\.kiro/specs)/[^/]+/' | \
+                       awk -F'/' '{print $2}' | sort -u | tr '\n' ' ')
+            echo "features=$FEATURES" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Kiro CLI
+        if: steps.detect.outputs.run_check == 'true'
+        run: |
+          curl -fsSL https://cli.kiro.dev/install | bash
+          echo "$HOME/.kiro/bin" >> "$GITHUB_PATH"
+
+      - name: Spec compliance per feature
+        if: steps.detect.outputs.run_check == 'true'
+        run: |
+          FEATURES="${{ steps.detect.outputs.features }}"
+          for FEATURE in $FEATURES; do
+            echo ""
+            echo "=== Checking feature: $FEATURE ==="
+
+            kiro-cli chat --agent aidlc-lead-engineer --no-interactive \
+              --trust-tools=fs_read,grep \
+              "Compliance check for feature '$FEATURE' on PR #$PR_NUMBER.
+
+            Read these files (if they exist):
+              - aidlc-docs/$FEATURE/aidlc-state.md
+              - aidlc-docs/$FEATURE/audit.md
+              - aidlc-docs/$FEATURE/inception/requirements/requirements.md
+              - aidlc-docs/$FEATURE/inception/application-design/design.md
+              - aidlc-docs/$FEATURE/construction/plans/*
+
+            Verify ALL of the following. Post a single PR comment summarising each. Fail the job via exit code 1 ONLY if any blocker is present. Use a clear 🟢/🟡/🔴 marker per item.
+
+            1. CURRENT STAGE DECLARED — aidlc-state.md has '## Current Stage' populated.
+            2. AUDIT TRAIL — audit.md exists and has at least one timestamped entry.
+            3. PHASE ARTEFACTS — if state indicates post-inception, an 'inception/' folder with requirements and design exists.
+            4. TASK COMPLETION — if tasks file exists, every task has [x] or explicit reason for [ ]. Uncompleted tasks without rationale are a blocker.
+            5. ACCEPTANCE-CRITERIA TESTS — for each acceptance criterion in requirements.md, verify a test exists (via grep for keywords). Missing tests are a blocker if stage >= construction-approved.
+            6. APPROVAL LABELS — check the issue linked via audit.md. Verify labels match the declared stage (e.g. aidlc:design-approved present if state claims design is approved).
+            7. EXTENSION DECISIONS LOGGED — if security/baseline or property-based extensions are enabled in aidlc-state.md, the audit trail records the opt-in decision.
+
+            Post the comment using:
+              gh pr comment $PR_NUMBER --body \"<the findings>\"
+
+            If any 🔴 blockers, exit 1. Otherwise exit 0.
+            "
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ "${{ steps.detect.outputs.run_check }}" = "true" ]; then
+            echo "Checked features: ${{ steps.detect.outputs.features }}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Skipped — no aidlc-docs/ or .kiro/specs/ changes in this PR." >> "$GITHUB_STEP_SUMMARY"
+          fi

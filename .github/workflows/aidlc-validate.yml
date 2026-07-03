@@ -1,0 +1,117 @@
+name: AI-DLC - Validate artefacts
+
+on:
+  pull_request:
+    paths:
+      - 'aidlc-docs/**'
+  workflow_dispatch:
+  schedule:
+    - cron: '0 7 * * *'  # daily sanity check at 07:00 UTC
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate aidlc-docs structure
+        id: validate
+        run: |
+          set -euo pipefail
+
+          FAIL=0
+          WARN=0
+          REPORT=/tmp/aidlc-validate.md
+          : > "$REPORT"
+
+          echo "# AI-DLC Artefact Validation" >> "$REPORT"
+          echo "" >> "$REPORT"
+
+          if [ ! -d aidlc-docs ]; then
+            echo "- No \`aidlc-docs/\` folder present. Skipping validation." >> "$REPORT"
+            cat "$REPORT"
+            echo "result=no-artefacts" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          FEATURE_COUNT=$(find aidlc-docs -maxdepth 1 -mindepth 1 -type d | wc -l)
+          echo "Features found: $FEATURE_COUNT" >> "$REPORT"
+          echo "" >> "$REPORT"
+
+          for FEATURE_DIR in aidlc-docs/*/; do
+            FEATURE=$(basename "$FEATURE_DIR")
+            echo "## $FEATURE" >> "$REPORT"
+
+            REQUIRED_FILES=(
+              "$FEATURE_DIR/aidlc-state.md"
+              "$FEATURE_DIR/audit.md"
+            )
+
+            for F in "${REQUIRED_FILES[@]}"; do
+              if [ ! -f "$F" ]; then
+                echo "- ❌ Missing required: \`$F\`" >> "$REPORT"
+                FAIL=$((FAIL + 1))
+              fi
+            done
+
+            # If the feature is past inception, inception/ must exist
+            if [ -f "$FEATURE_DIR/aidlc-state.md" ] && grep -qiE '(design|construction|operations|approved)' "$FEATURE_DIR/aidlc-state.md"; then
+              if [ ! -d "$FEATURE_DIR/inception" ]; then
+                echo "- ❌ \`aidlc-state.md\` indicates post-inception but \`inception/\` folder missing" >> "$REPORT"
+                FAIL=$((FAIL + 1))
+              fi
+            fi
+
+            # Audit.md must not be empty
+            if [ -f "$FEATURE_DIR/audit.md" ] && [ ! -s "$FEATURE_DIR/audit.md" ]; then
+              echo "- ⚠️ \`audit.md\` is empty" >> "$REPORT"
+              WARN=$((WARN + 1))
+            fi
+
+            # State file must declare a current stage
+            if [ -f "$FEATURE_DIR/aidlc-state.md" ] && ! grep -qiE '## Current Stage' "$FEATURE_DIR/aidlc-state.md"; then
+              echo "- ⚠️ \`aidlc-state.md\` missing '## Current Stage' section" >> "$REPORT"
+              WARN=$((WARN + 1))
+            fi
+
+            # Only log a success line if nothing was flagged for this feature
+            if ! grep -qE "^- (❌|⚠️)" "$REPORT" 2>/dev/null; then
+              echo "- ✅ Structure OK" >> "$REPORT"
+            fi
+            echo "" >> "$REPORT"
+          done
+
+          echo "---" >> "$REPORT"
+          echo "**Summary:** $FAIL failures, $WARN warnings across $FEATURE_COUNT feature(s)." >> "$REPORT"
+
+          cat "$REPORT"
+          echo "fail_count=$FAIL" >> "$GITHUB_OUTPUT"
+          echo "warn_count=$WARN" >> "$GITHUB_OUTPUT"
+          cp "$REPORT" /tmp/aidlc-validate-final.md
+
+          if [ "$FAIL" -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: Post PR comment with validation
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          gh pr comment "$PR_NUMBER" --body-file /tmp/aidlc-validate-final.md || echo "Comment failed — continuing"
+
+      - name: Write to step summary
+        if: always()
+        run: |
+          if [ -f /tmp/aidlc-validate-final.md ]; then
+            cat /tmp/aidlc-validate-final.md >> "$GITHUB_STEP_SUMMARY"
+          fi

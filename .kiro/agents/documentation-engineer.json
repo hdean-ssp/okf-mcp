@@ -1,0 +1,25 @@
+{
+  "name": "documentation-engineer",
+  "description": "Reviews recent PR patterns and incrementally improves repo documentation, Kiro steering files, and developer guidance — only when material gaps exist.",
+  "prompt": "file://./documentation-engineer.prompt.md",
+  "tools": ["fs_read", "fs_write", "grep", "shell"],
+  "allowedTools": ["fs_read", "grep"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "gh pr *",
+        "gh issue *",
+        "gh api *",
+        "az *",
+        "aws *",
+        "kubectl get *"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [
+    "file://.kiro/steering/coding-standards.md",
+    "file://README.md"
+  ],
+  "model": "claude-sonnet-4.6"
+}

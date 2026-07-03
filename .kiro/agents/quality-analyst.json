@@ -1,0 +1,8 @@
+{
+  "name": "quality-analyst",
+  "description": "Reads all filled audit templates across genres and produces a cross-genre executive overview with an overall health score, normalised metrics, cross-genre patterns, and a prioritised action plan.",
+  "prompt": "file://./quality-analyst.prompt.md",
+  "tools": ["fs_read", "fs_write", "grep"],
+  "allowedTools": ["fs_read", "grep"],
+  "model": "claude-opus-4.7"
+}

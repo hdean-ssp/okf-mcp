@@ -1,0 +1,19 @@
+{
+  "name": "team-auditor",
+  "description": "Fills team assessment templates by analysing git history for developer churn and attributing security vulnerabilities to developers using git blame. Uses git log commands to gather evidence-based assessments.",
+  "prompt": "file://./team-auditor.prompt.md",
+  "tools": ["fs_read", "fs_write", "grep", "shell"],
+  "allowedTools": ["fs_read", "grep"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "git log *",
+        "git blame *",
+        "git shortlog *",
+        "git show *"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "model": "claude-sonnet-4.6"
+}

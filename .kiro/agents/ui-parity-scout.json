@@ -1,0 +1,24 @@
+{
+  "name": "ui-parity-scout",
+  "description": "Watches for UI changes in one framework (Blazor, React, or mobile) and raises ui-sync issues when the equivalent change is needed in the other UI frameworks in the repo. Only activates if the repo has multiple UI codebases.",
+  "prompt": "file://./ui-parity-scout.prompt.md",
+  "tools": ["fs_read", "grep", "shell"],
+  "allowedTools": ["fs_read", "grep"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "gh pr view *",
+        "gh pr diff *",
+        "gh issue create *",
+        "gh issue list *",
+        "gh api *"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [
+    "file://.kiro/steering/coding-standards.md",
+    "file://README.md"
+  ],
+  "model": "claude-sonnet-4.6"
+}

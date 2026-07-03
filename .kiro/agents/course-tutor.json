@@ -1,0 +1,15 @@
+{
+  "name": "course-tutor",
+  "description": "Self-serve concept teacher for the 10-hour Acceleration Program. Replaces the instructor-led concept talk: explains each hour's concepts in monolith-to-modern framing, runs a short Socratic check, confirms understanding, then hands the learner back to the hands-on exercise. Read-only: it teaches, it never does the exercises for you.",
+  "prompt": "file://./course-tutor.prompt.md",
+  "tools": ["fs_read", "grep"],
+  "allowedTools": ["fs_read", "grep"],
+  "resources": [
+    "file://training.md",
+    "file://.kiro/steering/architecture-principles.md",
+    "file://.kiro/steering/security-baseline.md",
+    "file://.kiro/steering/coding-standards.md",
+    "file://templates/architecture/core-technologies.md"
+  ],
+  "model": "claude-sonnet-4.6"
+}

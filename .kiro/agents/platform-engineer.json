@@ -1,0 +1,35 @@
+{
+  "name": "platform-engineer",
+  "description": "Azure/AKS Kubernetes cluster guardian (the Kubernetes deploy path, ADR-004) that runs on a schedule to inspect cluster health, take corrective action on common failures, and file issues for problems requiring human intervention. The AWS path runs on ECS Fargate (AWS-managed) and is monitored via CloudWatch/ECS, not this agent.",
+  "prompt": "file://./platform-engineer.prompt.md",
+  "tools": ["fs_read", "grep", "shell"],
+  "allowedTools": ["fs_read", "grep"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "kubectl get *",
+        "kubectl describe *",
+        "kubectl logs *",
+        "kubectl top *",
+        "kubectl delete pod *",
+        "kubectl delete job *",
+        "kubectl scale *",
+        "helm list *",
+        "helm rollback *",
+        "helm uninstall *",
+        "az aks *",
+        "az acr *",
+        "aws eks *",
+        "aws ecr *",
+        "gh issue *",
+        "gh api *"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [
+    "file://.kiro/steering/infrastructure.md",
+    "file://.kiro/steering/architecture-principles.md"
+  ],
+  "model": "claude-sonnet-4.6"
+}

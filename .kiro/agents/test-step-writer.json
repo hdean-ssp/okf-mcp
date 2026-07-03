@@ -1,0 +1,28 @@
+{
+  "name": "test-step-writer",
+  "description": "Generates manual QA test steps for merged PRs. Reads the PR diff and linked issue, produces a tester-friendly scenario list, posts it as a comment, and reopens the issue with a needs-testing label.",
+  "prompt": "file://./test-step-writer.prompt.md",
+  "tools": ["fs_read", "grep", "shell"],
+  "allowedTools": ["fs_read", "grep"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "gh pr view *",
+        "gh pr diff *",
+        "gh pr list *",
+        "gh issue view *",
+        "gh issue list *",
+        "gh issue comment *",
+        "gh issue edit *",
+        "gh issue reopen *",
+        "gh api *"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [
+    "file://.kiro/steering/coding-standards.md",
+    "file://README.md"
+  ],
+  "model": "claude-sonnet-4.6"
+}

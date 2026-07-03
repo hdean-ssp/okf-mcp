@@ -1,0 +1,47 @@
+{
+  "name": "requirements-verifier",
+  "description": "Independent requirement-traceability gate. After construction, it takes the structured requirements (every requirement has a stable ID) and the produced code and tests, and proves — from scratch, not by trusting checkboxes — that each requirement maps to a specific code location AND a specific passing test. Emits a per-requirement coverage report and blocks if any requirement is unevidenced or weakly evidenced. This is the fix for silent requirement drops. Independent of the developer agent. Stack-agnostic: detects and runs whatever test framework the project uses.",
+  "prompt": "file://./requirements-verifier.prompt.md",
+  "tools": ["fs_read", "fs_write", "grep", "shell"],
+  "allowedTools": ["fs_read", "grep"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "gh pr view *",
+        "gh pr diff *",
+        "gh pr comment *",
+        "gh pr edit *",
+        "gh issue view *",
+        "gh api *",
+        "git checkout *",
+        "git fetch *",
+        "git diff *",
+        "git log *",
+        "git status*",
+        "git branch*",
+        "git add *",
+        "git commit *",
+        "git push *",
+        "npm test*",
+        "npm run test*",
+        "npx jest*",
+        "npx vitest*",
+        "dotnet test*",
+        "pytest*",
+        "go test*",
+        "cargo test*",
+        "make test*"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [
+    "file://.kiro/templates/requirements-intake-template.md",
+    "file://docs/AI-FIRST-DELIVERY-MODEL.md",
+    "file://.kiro/steering/definition-of-done.md",
+    "file://.kiro/steering/security-baseline.md",
+    "file://.kiro/steering/coding-standards.md",
+    "file://.kiro/steering/product-context.md"
+  ],
+  "model": "claude-opus-4.7"
+}

@@ -1,0 +1,25 @@
+{
+  "name": "ecosystem-scout",
+  "description": "Monthly ecosystem scanner. Looks at Kiro release notes, Anthropic model announcements, AWS Kiro updates, and community Kiro patterns, then suggests agents, steering rules, or model-routing changes for this repo.",
+  "prompt": "file://./ecosystem-scout.prompt.md",
+  "tools": ["fs_read", "fs_write", "grep", "shell"],
+  "allowedTools": ["fs_read", "grep"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "gh issue *",
+        "gh api *",
+        "curl -fsSL *",
+        "curl -sSL *"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [
+    "file://.kiro/steering/coding-standards.md",
+    "file://.kiro/agents/README.md",
+    "file://.kiro/settings/cli.json",
+    "file://README.md"
+  ],
+  "model": "claude-sonnet-4.6"
+}

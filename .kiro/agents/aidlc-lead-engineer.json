@@ -1,0 +1,33 @@
+{
+  "name": "aidlc-lead-engineer",
+  "description": "Drives a feature through the AI-DLC three-phase workflow (Inception → Construction → Operations). Detects 'Using AI-DLC, ...' triggers, scaffolds aidlc-docs/{feature}/, manages phase labels, asks structured multiple-choice questions, and gates every stage transition on human approval. Delegates implementation to developer agent.",
+  "prompt": "file://./aidlc-lead-engineer.prompt.md",
+  "tools": ["fs_read", "fs_write", "grep", "shell"],
+  "allowedTools": ["fs_read", "grep"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "gh issue view *",
+        "gh issue list *",
+        "gh issue comment *",
+        "gh issue edit *",
+        "gh pr list *",
+        "gh pr view *",
+        "gh api *",
+        "git log *",
+        "git diff *"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [
+    "file://.kiro/steering/aws-aidlc-rules/core-workflow.md",
+    "file://.kiro/aws-aidlc-rule-details/common/process-overview.md",
+    "file://.kiro/aws-aidlc-rule-details/common/session-continuity.md",
+    "file://.kiro/aws-aidlc-rule-details/common/content-validation.md",
+    "file://.kiro/aws-aidlc-rule-details/common/question-format-guide.md",
+    "file://.kiro/steering/architecture-principles.md",
+    "file://.kiro/steering/security-baseline.md"
+  ],
+  "model": "claude-opus-4.7"
+}

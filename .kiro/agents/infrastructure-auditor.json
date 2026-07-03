@@ -1,0 +1,13 @@
+{
+  "name": "infrastructure-auditor",
+  "description": "Fills infrastructure maturity audit templates by analysing the codebase for architecture patterns, tech stack choices, build tooling, and engineering practices. Scores maturity on a 1-5 scale with evidence.",
+  "prompt": "file://./infrastructure-auditor.prompt.md",
+  "tools": ["fs_read", "fs_write", "grep"],
+  "allowedTools": ["fs_read", "grep"],
+  "resources": [
+    "file://.kiro/steering/architecture-principles.md",
+    "file://.kiro/steering/infrastructure.md",
+    "file://.kiro/steering/coding-standards.md"
+  ],
+  "model": "claude-opus-4.7"
+}

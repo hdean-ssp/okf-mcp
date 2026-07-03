@@ -1,0 +1,21 @@
+{
+  "name": "continuity-engineer",
+  "description": "Reviews recently closed issues and PRs to ensure proper work handoff. Creates follow-up tickets when work is closed incomplete.",
+  "prompt": "file://./continuity-engineer.prompt.md",
+  "tools": ["fs_read", "grep", "shell"],
+  "allowedTools": ["fs_read", "grep"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "gh issue *",
+        "gh pr *",
+        "gh api *"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [
+    "file://.kiro/steering/coding-standards.md"
+  ],
+  "model": "claude-sonnet-4.6"
+}

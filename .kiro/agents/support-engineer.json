@@ -1,0 +1,29 @@
+{
+  "name": "support-engineer",
+  "description": "First-responder for FreshService-synced customer support tickets. Classifies type and severity, adds code context, routes to engineering or support, and posts an internal triage comment that syncs back to FreshService as a note.",
+  "prompt": "file://./support-engineer.prompt.md",
+  "tools": ["fs_read", "grep", "shell"],
+  "allowedTools": ["fs_read", "grep"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "gh issue view *",
+        "gh issue list *",
+        "gh issue comment *",
+        "gh issue edit *",
+        "gh pr list *",
+        "gh pr view *",
+        "gh search code *",
+        "gh search issues *",
+        "gh search prs *",
+        "gh api *"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [
+    "file://.kiro/steering/coding-standards.md",
+    "file://README.md"
+  ],
+  "model": "claude-sonnet-4.6"
+}

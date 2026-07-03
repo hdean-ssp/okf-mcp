@@ -1,0 +1,98 @@
+name: Requirements Intake
+
+# Runs the requirements-analyst (intake structurer). Converts a raw requirements
+# source into a structured, atomic, numbered requirements document and opens a PR
+# for the BA to approve before AI-DLC inception.
+#
+# Triggers:
+#   - Manual dispatch with an issue number (pilot path)
+#   - An issue labelled `needs-intake`
+#
+# NOTE: This workflow is intentionally disabled by default. Enable it per repo
+# when piloting: gh workflow enable intake.yml
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number whose body holds the raw requirements'
+        required: true
+        type: string
+      source_path:
+        description: 'Optional: path to a raw requirements file instead of an issue body'
+        required: false
+        type: string
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: intake-${{ github.event.issue.number || inputs.issue_number }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Decide whether to run
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.label.name }}" = "needs-intake" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  intake:
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KIRO_API_KEY: ${{ secrets.KIRO_API_KEY }}
+      GH_TOKEN: ${{ secrets.PROJECT_MANAGER_PAT }}
+      GITHUB_TOKEN: ${{ secrets.PROJECT_MANAGER_PAT }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
+      SOURCE_PATH: ${{ inputs.source_path }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Kiro CLI
+        run: |
+          curl -fsSL https://cli.kiro.dev/install | bash
+          echo "$HOME/.kiro/bin" >> "$GITHUB_PATH"
+
+      - name: Configure git identity
+        run: |
+          git config user.name "requirements-analyst[bot]"
+          git config user.email "requirements-analyst[bot]@users.noreply.github.com"
+
+      - name: Run requirements-analyst
+        run: |
+          SRC_NOTE=""
+          if [ -n "$SOURCE_PATH" ]; then
+            SRC_NOTE="The raw requirements source is at the file: $SOURCE_PATH. Read it as the source."
+          fi
+          kiro-cli chat --agent requirements-analyst --no-interactive \
+            --trust-tools=fs_read,fs_write,grep,shell \
+            "Run the intake structurer for issue #$ISSUE_NUMBER. $SRC_NOTE Read the issue and all comments, classify every requirement, produce the structured requirements document from .kiro/templates/requirements-intake-template.md under aidlc-docs/<slug>/inception/requirements/requirements-intake.md, surface every ambiguity as a blocking open question, then open a PR with the BA (issue author) as reviewer. Do not choose technology. Do not approve your own output."
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "Requirements intake run complete for issue #$ISSUE_NUMBER." >> "$GITHUB_STEP_SUMMARY"
+          echo "If a PR was opened, the BA must answer open questions and approve before AI-DLC inception." >> "$GITHUB_STEP_SUMMARY"

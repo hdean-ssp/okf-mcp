@@ -1,0 +1,29 @@
+{
+  "name": "tech-reviewer",
+  "description": "Senior technical reviewer that deep-reviews PRs, validates infrastructure claims against live cloud environments, and ensures coherent project direction.",
+  "prompt": "file://./tech-reviewer.prompt.md",
+  "tools": ["fs_read", "grep", "shell"],
+  "allowedTools": ["fs_read", "grep"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "gh pr *",
+        "gh issue *",
+        "gh api *",
+        "az *",
+        "aws *",
+        "kubectl get *",
+        "kubectl describe *",
+        "kubectl logs *"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [
+    "file://.kiro/steering/coding-standards.md",
+    "file://.kiro/steering/architecture-principles.md",
+    "file://.kiro/steering/security-baseline.md",
+    "file://.kiro/steering/infrastructure.md"
+  ],
+  "model": "claude-opus-4.7"
+}

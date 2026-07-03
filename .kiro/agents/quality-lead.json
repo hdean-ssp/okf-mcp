@@ -1,0 +1,21 @@
+{
+  "name": "quality-lead",
+  "description": "Entry point for automated codebase auditing. Coordinates genre-specific sub-agents (security, infrastructure, team, hosting) and produces a comprehensive audit with filled templates and an executive overview.",
+  "prompt": "file://./quality-lead.prompt.md",
+  "tools": ["fs_read", "fs_write", "grep", "shell"],
+  "allowedTools": ["fs_read", "grep"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "git log *",
+        "git blame *",
+        "git shortlog *"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [
+    "file://.github/audit-config.yml"
+  ],
+  "model": "claude-opus-4.7"
+}

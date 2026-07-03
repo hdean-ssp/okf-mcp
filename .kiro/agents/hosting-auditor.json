@@ -1,0 +1,12 @@
+{
+  "name": "hosting-auditor",
+  "description": "Fills hosting security audit templates by analysing Infrastructure-as-Code files (Terraform, CloudFormation, Bicep, ARM templates). Auto-detects AWS and/or Azure usage and fills the relevant provider templates.",
+  "prompt": "file://./hosting-auditor.prompt.md",
+  "tools": ["fs_read", "fs_write", "grep"],
+  "allowedTools": ["fs_read", "grep"],
+  "resources": [
+    "file://.kiro/steering/infrastructure.md",
+    "file://.kiro/steering/security-baseline.md"
+  ],
+  "model": "claude-opus-4.7"
+}

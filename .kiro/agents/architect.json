@@ -1,0 +1,15 @@
+{
+  "name": "architect",
+  "description": "Expert architect for designing cloud-native architectures on AWS, Azure, and hybrid platforms. AWS uses ECS Fargate (production standard), Azure uses AKS, hybrid uses portable Kubernetes (ADR-004); Well-Architected aligned. Creates ADRs with minimum 5 alternatives evaluated.",
+  "prompt": "file://./architect.prompt.md",
+  "tools": ["fs_read", "fs_write", "grep"],
+  "allowedTools": ["fs_read", "grep"],
+  "resources": [
+    "file://.kiro/steering/aws-aidlc-rules/core-workflow.md",
+    "file://.kiro/steering/architecture-principles.md",
+    "file://.kiro/steering/security-baseline.md",
+    "file://.kiro/steering/infrastructure.md",
+    "file://docs/adrs/TEMPLATE.md"
+  ],
+  "model": "claude-opus-4.7"
+}

@@ -1,0 +1,35 @@
+{
+  "name": "requirements-analyst",
+  "description": "Intake structurer. Converts a raw requirements source (ADO story export, prose doc, or pasted feature/story/task) into a tight, atomic, numbered requirements document using the intake template — separating background, design constraints, functional requirements, and NFRs; deriving explicit schema and edge cases from sample data; and surfacing every ambiguity as a blocking open question. Produces the artefact the BA approves before AI-DLC inception. Stack-agnostic: it does not choose technology (the architect agent does that).",
+  "prompt": "file://./requirements-analyst.prompt.md",
+  "tools": ["fs_read", "fs_write", "grep", "shell"],
+  "allowedTools": ["fs_read", "grep"],
+  "toolsSettings": {
+    "shell": {
+      "allowedCommands": [
+        "gh issue view *",
+        "gh issue comment *",
+        "gh pr create *",
+        "gh pr view *",
+        "gh pr comment *",
+        "gh api *",
+        "git checkout *",
+        "git add *",
+        "git commit *",
+        "git push *",
+        "git status*",
+        "git branch*"
+      ],
+      "autoAllowReadonly": true
+    }
+  },
+  "resources": [
+    "file://.kiro/templates/requirements-intake-template.md",
+    "file://.kiro/steering/security-baseline.md",
+    "file://.kiro/steering/architecture-principles.md",
+    "file://.kiro/steering/coding-standards.md",
+    "file://.kiro/steering/product-context.md",
+    "file://docs/AI-FIRST-DELIVERY-MODEL.md"
+  ],
+  "model": "claude-opus-4.7"
+}

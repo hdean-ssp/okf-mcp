@@ -1,0 +1,167 @@
+name: PR Enrichment
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: read
+
+jobs:
+  analyse:
+    name: PR Metadata & Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Analyse PR changes
+        id: analyse
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          FILES_COUNT=$(echo "$CHANGED_FILES" | wc -l)
+          WORKFLOW_FILES=$(echo "$CHANGED_FILES" | grep -c "^.github/workflows/" || true)
+          HELM_FILES=$(echo "$CHANGED_FILES" | grep -c "^charts/" || true)
+          API_FILES=$(echo "$CHANGED_FILES" | grep -c "^services/api/" || true)
+          WEB_FILES=$(echo "$CHANGED_FILES" | grep -c "^services/web/" || true)
+          TEST_FILES=$(echo "$CHANGED_FILES" | grep -c "test\|spec" || true)
+          DOC_FILES=$(echo "$CHANGED_FILES" | grep -c "^docs/\|\.md$" || true)
+          IAC_FILES=$(echo "$CHANGED_FILES" | grep -c "^ops/iac/\|\.tf$\|\.bicep$" || true)
+
+          ADDITIONS=$(git diff --numstat origin/${{ github.base_ref }}...HEAD | awk '{s+=$1} END {print s+0}')
+          DELETIONS=$(git diff --numstat origin/${{ github.base_ref }}...HEAD | awk '{s+=$2} END {print s+0}')
+
+          TOTAL_CHANGES=$((ADDITIONS + DELETIONS))
+          PROTECTED_FILES=$((WORKFLOW_FILES + IAC_FILES + HELM_FILES))
+
+          if [[ $TOTAL_CHANGES -lt 50 ]] && [[ $PROTECTED_FILES -eq 0 ]]; then
+            RISK="low"
+          elif [[ $TOTAL_CHANGES -lt 200 ]] && [[ $PROTECTED_FILES -lt 3 ]]; then
+            RISK="medium"
+          else
+            RISK="high"
+          fi
+
+          HAS_TESTS="false"
+          if [[ $TEST_FILES -gt 0 ]]; then
+            HAS_TESTS="true"
+          fi
+
+          REQUIRES_MAINTAINER="false"
+          if echo "$CHANGED_FILES" | grep -qE "^\.github/workflows/|^ops/|^platform/policies/|^SECURITY\.md$|^CODEOWNERS$|^charts/"; then
+            REQUIRES_MAINTAINER="true"
+          fi
+
+          {
+            echo "files_count=$FILES_COUNT"
+            echo "workflow_files=$WORKFLOW_FILES"
+            echo "helm_files=$HELM_FILES"
+            echo "api_files=$API_FILES"
+            echo "web_files=$WEB_FILES"
+            echo "test_files=$TEST_FILES"
+            echo "doc_files=$DOC_FILES"
+            echo "iac_files=$IAC_FILES"
+            echo "additions=$ADDITIONS"
+            echo "deletions=$DELETIONS"
+            echo "risk=$RISK"
+            echo "has_tests=$HAS_TESTS"
+            echo "requires_maintainer=$REQUIRES_MAINTAINER"
+          } >> $GITHUB_OUTPUT
+
+      - name: Post PR review summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const analyse = ${{ toJSON(steps.analyse.outputs) }};
+            const risk = analyse.risk;
+            const requiresMaintainer = analyse.requires_maintainer === 'true';
+            const hasTests = analyse.has_tests === 'true';
+
+            const riskEmoji = { low: '🟢', medium: '🟡', high: '🔴' };
+            const riskLabel = { low: 'Low Risk', medium: 'Medium Risk', high: 'High Risk' };
+
+            const notes = [];
+            if (requiresMaintainer) notes.push('⚠️ **Protected paths modified** — maintainer review required');
+            if (!hasTests && (parseInt(analyse.api_files) > 0 || parseInt(analyse.web_files) > 0)) {
+              notes.push('ℹ️ **No test changes detected** — consider adding tests');
+            }
+            if (parseInt(analyse.additions) > 500) {
+              notes.push('📊 **Large PR** — consider splitting into smaller changes');
+            }
+
+            const body = `## 📋 PR Review Summary
+
+            ### Change Statistics
+            - **Files changed:** ${analyse.files_count}
+            - **Lines:** +${analyse.additions} / -${analyse.deletions}
+            - **Risk:** ${riskEmoji[risk]} ${riskLabel[risk]}
+
+            ### Files by Category
+            | Category | Count |
+            |---|---|
+            | Workflows | ${analyse.workflow_files} |
+            | Helm | ${analyse.helm_files} |
+            | API | ${analyse.api_files} |
+            | Web | ${analyse.web_files} |
+            | Tests | ${analyse.test_files} |
+            | Docs | ${analyse.doc_files} |
+            | Infrastructure | ${analyse.iac_files} |
+
+            ${notes.length > 0 ? '### Notes\n' + notes.join('\n') : ''}
+
+            ---
+            *Automated analysis. For deeper review, the tech-reviewer agent will run if this PR requires maintainer review.*`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c =>
+              c.user?.type === 'Bot' && c.body?.includes('PR Review Summary')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }
+
+      - name: Add labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const risk = '${{ steps.analyse.outputs.risk }}';
+            const requiresMaintainer = '${{ steps.analyse.outputs.requires_maintainer }}' === 'true';
+            const hasTests = '${{ steps.analyse.outputs.has_tests }}' === 'true';
+
+            const labels = [`risk:${risk}`];
+            if (requiresMaintainer) labels.push('requires-maintainer-review');
+            if (!hasTests) labels.push('needs-tests');
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: labels,
+            });

@@ -15,7 +15,6 @@ env/
 # IDE
 .idea/
 .vscode/
-.kiro/
 *.swp
 *.swo
 
@@ -35,3 +34,20 @@ htmlcov/
 *.key
 *.p12
 *.pfx
+
+# --- AI-DLC framework patterns ---
+# Kiro local-only settings
+.kiro/settings/local.json
+.kiro/.cache/
+.kiro/.history/
+# Secrets
+*.env
+*.env.local
+*.env.*.local
+.envrc
+*.pem
+*.key
+credentials.json
+service-account*.json
+# Verification gate sentinel
+verification-verdict.txt
