@@ -1,5 +1,7 @@
 # okf-mcp
 
+[![BundleDex](https://bundledex.net/static-badge.svg)](https://bundledex.net)
+
 Semantic search and CRUD tooling for [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) knowledge bundles. Runs locally, entirely offline.
 
 OKF is a vendor-neutral format (published by Google Cloud Platform) for persisting team knowledge as markdown with YAML frontmatter. okf-mcp indexes those files and makes them searchable via hybrid BM25 + vector cosine similarity. It exposes the same functionality through both a CLI and an MCP server, so humans and AI agents can query the same bundle.
