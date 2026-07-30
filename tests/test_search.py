@@ -195,3 +195,58 @@ class TestFTSUpsertDelete:
 
         results = index.search_keyword("new updated", top_n=5)
         assert len(results) == 1
+
+
+class TestThreadSafety:
+    """Regression tests: the MCP server reuses a cached VectorIndex across
+    asyncio.to_thread worker threads. Connections must tolerate cross-thread use
+    (check_same_thread=False), and a failed write must not leave a dangling
+    transaction that poisons later operations.
+    """
+
+    def test_cross_thread_write_and_read(self, index):
+        """A VectorIndex created on one thread must be usable from another.
+
+        Before the fix (check_same_thread=True) this raised
+        sqlite3.ProgrammingError and the cached index stayed broken until restart.
+        """
+        import threading
+
+        errors: list = []
+
+        def worker():
+            try:
+                _upsert_concept(index, "cross-thread", body="written from another thread")
+                assert index.concept_count() == 1
+                results = index.search_keyword("another thread", top_n=5)
+                assert any(r.concept_id == "cross-thread" for r in results)
+            except Exception as e:  # pragma: no cover - failure path
+                errors.append(e)
+
+        t = threading.Thread(target=worker)
+        t.start()
+        t.join()
+
+        assert not errors, f"cross-thread use raised: {errors}"
+
+    def test_failed_write_rolls_back(self, index):
+        """A write that raises mid-transaction must roll back, leaving the
+        connection usable for the next operation."""
+        import sqlite3
+
+        def failing() -> None:
+            # Start writing, then fail before commit.
+            index._write_conn.execute(
+                "INSERT OR REPLACE INTO concepts (concept_id, title) VALUES (?, ?)",
+                ("partial", "should be rolled back"),
+            )
+            raise sqlite3.IntegrityError("simulated mid-write failure")
+
+        with pytest.raises(sqlite3.IntegrityError):
+            index._write_op("failing", failing)
+
+        # The partial row must have been rolled back...
+        assert index.get_metadata("partial") is None
+        # ...and the connection must still work for subsequent writes.
+        _upsert_concept(index, "after-failure", body="works after rollback")
+        assert index.get_metadata("after-failure") is not None
