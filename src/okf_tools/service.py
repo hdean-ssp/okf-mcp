@@ -515,20 +515,33 @@ def _check_duplicates(config: OkfConfig, content: str, force: bool) -> None:
 
 
 def _git_add(bundle_root: Path, file_path: Path) -> None:
-    """Run git add on a file. Logs a warning on failure."""
+    """Best-effort ``git add`` for a file. Never blocks or raises to the caller.
+
+    All standard streams are routed to DEVNULL rather than captured. When the
+    MCP server (itself launched over stdio) spawns git with capture_output=True,
+    the child can inherit/hold a pipe that makes subprocess.run block forever
+    inside its post-timeout drain — observed on Windows as a commit hanging
+    indefinitely with an orphaned git.exe left running, because the 5s timeout
+    could never complete its cleanup. With no pipes to drain, the timeout is
+    honoured cleanly. git-add is advisory, so any failure is logged, not raised.
+    """
     try:
         result = subprocess.run(
-            ["git", "add", str(file_path)],
+            ["git", "add", "--", str(file_path)],
             cwd=str(bundle_root),
-            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             timeout=5,
+            check=False,
         )
         if result.returncode != 0:
-            stderr = result.stderr.decode("utf-8", errors="replace").strip()
             logging.getLogger(__name__).warning(
-                "git add failed for %s: %s", file_path, stderr or f"exit code {result.returncode}"
+                "git add failed for %s (exit code %s)", file_path, result.returncode
             )
     except FileNotFoundError:
         logging.getLogger(__name__).debug("git not found on PATH, skipping auto-add")
+    except subprocess.TimeoutExpired:
+        logging.getLogger(__name__).warning("git add timed out for %s; skipping auto-add", file_path)
     except subprocess.SubprocessError as e:
         logging.getLogger(__name__).warning("git add failed for %s: %s", file_path, e)
