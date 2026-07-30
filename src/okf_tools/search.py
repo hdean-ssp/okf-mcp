@@ -83,15 +83,24 @@ class VectorIndex:
         self.db_path = db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Write connection — used for upsert, delete, clear, set_* operations
-        self._write_conn = sqlite3.connect(str(db_path))
+        # Write connection — used for upsert, delete, clear, set_* operations.
+        # check_same_thread=False: the MCP server dispatches every service call
+        # through asyncio.to_thread(), so a single cached VectorIndex is reused from
+        # different thread-pool workers across calls. Writes are still serialized by
+        # the server's asyncio write-lock (so this connection is never used
+        # concurrently), but it IS used from varying threads — which the default
+        # check_same_thread=True forbids, raising ProgrammingError and poisoning the
+        # cached index until the server restarts.
+        self._write_conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._write_conn.execute("PRAGMA journal_mode=WAL")
         self._write_conn.execute(f"PRAGMA busy_timeout={self.BUSY_TIMEOUT_MS}")
         self._load_extension(self._write_conn)
         self._create_tables()
 
-        # Read connection — used for searches and metadata queries
-        self._read_conn = sqlite3.connect(str(db_path), uri=False)
+        # Read connection — used for searches and metadata queries.
+        # check_same_thread=False for the same reason as the write connection: it is
+        # accessed from whichever asyncio.to_thread worker serves a read call.
+        self._read_conn = sqlite3.connect(str(db_path), uri=False, check_same_thread=False)
         self._read_conn.execute(f"PRAGMA busy_timeout={self.BUSY_TIMEOUT_MS}")
         self._load_extension(self._read_conn)
 
@@ -143,8 +152,19 @@ class VectorIndex:
 
         try:
             return fn()
-        except sqlite3.OperationalError as e:
-            if "locked" in str(e).lower() or "busy" in str(e).lower():
+        except Exception as e:
+            # Roll back so a failed or interrupted write never leaves an open
+            # transaction behind. A dangling transaction on the shared write
+            # connection poisons every subsequent operation (observed as a
+            # persistent "internal error" that only clears on server restart,
+            # e.g. after a client cancels a commit mid-flight).
+            try:
+                self._write_conn.rollback()
+            except sqlite3.Error:
+                pass
+            if isinstance(e, sqlite3.OperationalError) and (
+                "locked" in str(e).lower() or "busy" in str(e).lower()
+            ):
                 raise IndexBusyError(operation) from e
             raise
 
