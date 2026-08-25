@@ -30,7 +30,11 @@ class Concept:
 
     @property
     def type(self) -> str:
-        return self.frontmatter["type"]
+        # Tolerant like every sibling property here (title, tags, timestamp).
+        # A bundle with an untyped note is non-conformant, but a consumer
+        # should report that, not die on it — sync.py already keeps a
+        # `skipped` list for exactly this class of file.
+        return self.frontmatter.get("type", "")
 
     @property
     def tags(self) -> list[str]:
