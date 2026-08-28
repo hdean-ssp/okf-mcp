@@ -55,6 +55,22 @@ class TestParseAndFormat:
         with pytest.raises(ParseError):
             parse_concept(f, tmp_path)
 
+    def test_missing_type_does_not_raise(self, tmp_path):
+        """A concept with no `type` must parse, not explode.
+
+        A bundle containing an untyped note is non-conformant (SPEC 11.2), but
+        a consumer has to be able to say so. `Concept.type` used to index the
+        key directly, so a single untyped file anywhere aborted an entire
+        reindex with KeyError before any of it could be reported.
+        """
+        f = tmp_path / "untyped.md"
+        f.write_text("---\ntitle: No type here\n---\n\nBody.\n")
+
+        concept = parse_concept(f, tmp_path)
+
+        assert concept.type == ""
+        assert concept.title == "No type here"
+
     def test_concept_id_from_nested_path(self, tmp_path):
         nested = tmp_path / "a" / "b"
         nested.mkdir(parents=True)
