@@ -404,7 +404,7 @@ def get_stats(config: OkfConfig) -> dict[str, Any]:
     for c in concepts:
         t = c.frontmatter.get("type", "")
         type_dist[t] = type_dist.get(t, 0) + 1
-        for tag in c.tags:
+        for tag in (c.tags or []):
             tag_dist[tag] = tag_dist.get(tag, 0) + 1
 
     index = get_index(config)

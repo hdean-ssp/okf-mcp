@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from unittest import mock
 
-from okf_tools.service import _git_add
+from okf_tools.service import _git_add, get_stats
 
 
 class TestGitAddDoesNotHang:
@@ -49,3 +49,25 @@ class TestGitAddDoesNotHang:
         """A non-git directory (git add returns non-zero) must not raise."""
         # Real invocation against a temp dir that is not a git repo.
         _git_add(tmp_path, tmp_path / "concept.md")  # must return cleanly
+
+class TestGetStatsToleratesNullTags:
+    """`get_stats` must survive a concept whose `tags` key is present but null.
+
+    `tags: null` is valid YAML and parses to None, not to an empty list. Iterating
+    it directly raised TypeError and took the whole call down, so a single such
+    note made bundle statistics unavailable entirely.
+    """
+
+    def test_null_tags_does_not_raise(self, sample_config):
+        concept = sample_config.bundle_path / "null-tags.md"
+        concept.write_text(
+            "---\ntype: Pattern\ntitle: Null tags\ntags: null\n---\n\nBody.\n",
+            encoding="utf-8",
+        )
+
+        stats = get_stats(sample_config)  # must not raise
+
+        assert stats["concept_count"] == 1
+        assert stats["tag_distribution"] == {}
+        assert stats["type_distribution"] == {"Pattern": 1}
+
